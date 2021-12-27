@@ -12,7 +12,14 @@
 #include <string>
 #include <vector>
 
+#define ERR_EXIT(a) \
+  do {              \
+    perror(a);      \
+    exit(1);        \
+  } while (0)
+
 #define BUFLEN 512
+#define MAXFD 128
 
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
@@ -32,20 +39,6 @@ int state[2048], commands[2048], filelen[2048], file_fd[2048];
 char filename[2048][64], username[2048][16];
 off_t offset[2048];
 std::vector<std::string> ls[2048];
-
-int initServer(struct addrinfo *aip) {
-  int sockfd;
-  if ((sockfd = socket(aip->ai_family, aip->ai_socktype, 0)) < 0) return -1;
-  if (bind(sockfd, aip->ai_addr, aip->ai_addrlen) < 0) {
-    close(sockfd);
-    return -1;
-  }
-  if (listen(sockfd, 10) < 0) {
-    close(sockfd);
-    return -1;
-  }
-  return sockfd;
-}
 
 void dopath(int connfd) {
   struct dirent *dirp;
@@ -71,7 +64,7 @@ void serve(int sockfd) {
 
   memset(state, 0, sizeof(state));
 
-  int maxfd = 128;
+  int maxfd = MAXFD;
   fd_set master_rfds, working_rfds, master_wfds, working_wfds;
 
   FD_ZERO(&master_rfds);
@@ -214,7 +207,7 @@ void serve(int sockfd) {
             dopath(connfd);
             int sum = 0;
             for (std::string s : ls[connfd]) sum += s.length();
-            sprintf(buf, "%d\n", sum + ls[connfd].size());
+            sprintf(buf, "%lu\n", sum + ls[connfd].size());
             n = send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
             state[connfd] = STATE_CHECK_FILESIZE;
           }
@@ -276,39 +269,35 @@ void serve(int sockfd) {
     }
   }
 }
+
+
+static int initServer(unsigned short port) {
+  struct sockaddr_in server_addr;
+  int sockfd = socket(AF_INET , SOCK_STREAM , 0);
+  if (sockfd < 0) ERR_EXIT("socket");
+
+  bzero(&server_addr, sizeof(server_addr));
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_addr.sin_port = htons(port);
+
+  if (bind(sockfd, (struct sockaddr*)& server_addr, sizeof(server_addr)) < 0) {
+      ERR_EXIT("bind");
+  }
+  if (listen(sockfd, MAXFD) < 0) {
+      ERR_EXIT("listen");
+  }
+  return sockfd;
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 2) {
     fprintf(stderr, "usage: ./server [port]\n");
     exit(1);
   }
 
-  struct addrinfo *aip, *res;
-  struct addrinfo hint;
-  int sockfd, n;
-  char *host;
-
   mkdir("server_dir", DIR_MODE);
 
-  n = sysconf(_SC_HOST_NAME_MAX);
-  host = (char *)malloc(n);
-  gethostname(host, n);
-
-  memset(&hint, 0, sizeof(hint));
-  hint.ai_flags = AI_PASSIVE;
-  hint.ai_socktype = SOCK_STREAM;
-  hint.ai_canonname = NULL;
-  hint.ai_addr = NULL;
-  hint.ai_next = NULL;
-
-  if (getaddrinfo(host, argv[1], &hint, &res) != 0) {
-    fprintf(stderr, "getaddrinfo error.");
-  }
-
-  for (aip = res; aip != NULL; aip = aip->ai_next) {
-    if ((sockfd = initServer(aip)) >= 0) {
-      serve(sockfd);
-    }
-  }
-
-  fprintf(stderr, "socket error.");
+  int sockfd = initServer((unsigned short) atoi(argv[1]));
+  serve(sockfd); 
 }

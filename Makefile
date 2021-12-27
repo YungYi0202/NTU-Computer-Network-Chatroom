@@ -1,5 +1,16 @@
-all: client server
-client:
-	g++ -std=c++17 client.cpp -o client
-server:
-	g++ -std=c++17 server.cpp -o server
+.PHONY: all clean run
+CC=gcc
+CFLAGS=-std=c99 -O2
+LDFLAGS=-lm
+TARGET=server client 
+
+all: $(TARGET)
+
+server: server.cpp
+	g++ -g -Wall -std=c++11 $^ -o $@
+client: client.cpp
+	g++ -g -Wall -std=c++11 $^ -o $@
+
+clean:
+	rm -f $(TARGET)
+

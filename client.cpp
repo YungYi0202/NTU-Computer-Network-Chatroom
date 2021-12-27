@@ -59,6 +59,7 @@ class Server {
     int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0) err(1, "can't open socket");
 
+    // TODO: Check out what this is for.
     setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int));
 
     int port = 8080;
@@ -300,7 +301,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  server.initServer();
+  // server.initServer();
 
   char ip[32], port[32];
   char *pch;
