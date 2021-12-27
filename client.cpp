@@ -154,7 +154,6 @@ class Client {
 
     int server_fd;
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    fprintf(stderr, "server_fd = %d\n", server_fd);
     if (server_fd >= 0) {
       int x = connect(server_fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
       if (x == 0) {
@@ -174,7 +173,6 @@ class Client {
 
     do {
       n = send(server_fd, username, strlen(username), 0);
-      fprintf(stderr, "send %d bytes\n", n);
       recv(server_fd, buf, BUF_LEN, 0);
       if (buf[0] == '0') {
         printf("username is in used, please try another:");
@@ -192,13 +190,10 @@ class Client {
       while ((zb = getline(&line, &len, stdin)) <= 1) {
       }
 
-      fprintf(stderr, "receive user command: %s\n", line);
-
       int command_argc = 0;
       char *pch;
       pch = strtok(line, " \n");
       while (pch != NULL) {
-        fprintf(stderr, "pch = %s\n", pch);
         if (command_argc == 0)
           strcpy(command, pch);
         else if (command_argc == 1)
@@ -237,20 +232,16 @@ class Client {
         command[strlen(command) + 1] = 0;
         command[strlen(command)] = ' ';
         sprintf(command + strlen(command), "%d\n", (int)st.st_size);
-        fprintf(stderr, "command is %s\n", command);
       }
       n = send(server_fd, command, strlen(command), 0);
-      fprintf(stderr, "send %d bytes\n", n);
 
       switch (command[0]) {
         case 'p':
           n = recv(server_fd, buf, 2, 0);
-          fprintf(stderr, "recv %d bytes\n", n);
 
           file_fd = open(path, O_RDWR);
           while ((n = read(file_fd, buf, BUF_LEN)) > 0) {
             int x = send(server_fd, buf, n, 0);
-            fprintf(stderr, "send %d bytes\n", x);
           }
 
           printf("put %s successfully\n", filename);
@@ -265,20 +256,16 @@ class Client {
             printf("The %s doesn’t exist\n", filename);
             break;
           }
-          fprintf(stderr, "receive %d bytes, file len = %d\n", n, file_len);
 
           sprintf(buf, "1\n");
           send(server_fd, buf, 2, 0);
 
-          fprintf(stderr, "open file at %s\n", path);
           file_fd = open(path, O_CREAT | O_RDWR, FILE_MODE);
           while (file_len > 0 &&
                  (n = recv(server_fd, buf, std::min(file_len, BUF_LEN), 0)) >
                      0) {
-            fprintf(stderr, "recv %d bytes\n", n);
             write(file_fd, buf, n);
             file_len -= n;
-            fprintf(stderr, "file len = %d\n", file_len);
           }
 
           printf("get %s successfully\n", filename);
@@ -295,7 +282,6 @@ class Client {
 
           if (len > 0) {
             n = recv(server_fd, buf, len, 0);
-            fprintf(stderr, "recv %d bytes\n", n);
             if (n > 0) {
               buf[n] = 0;
               printf("%s", buf);
