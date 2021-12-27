@@ -208,6 +208,7 @@ void serve(int sockfd) {
             strcpy(path + strlen(path), filename[connfd]);
             int valid;
             if ((valid = stat(path, &st)) == -1) {
+              fprintf(stderr, "the file doesn't exist\n");
               sprintf(buf, "0\n");
               send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
               state[connfd] = STATE_RECV_COMMAND;
@@ -237,7 +238,6 @@ void serve(int sockfd) {
           FD_SET(connfd, &master_rfds);
         } else if (state[connfd] == STATE_RCSN_FILE) {
           if (commands[connfd] == LS) {
-
             int l = 0;
             for (int i = filelen[connfd]; i < ls[connfd].size(); i++) {
               std::string s = ls[connfd][i];
@@ -252,12 +252,10 @@ void serve(int sockfd) {
             }
             if (l) {
               n = send(connfd, buf, l, MSG_NOSIGNAL);
-              fprintf(stderr, "send %d bytes\n", n);
-              state[connfd] = STATE_RECV_COMMAND;
-              FD_CLR(connfd, &master_wfds);
-              FD_SET(connfd, &master_rfds);
             }
-            
+            state[connfd] = STATE_RECV_COMMAND;
+            FD_CLR(connfd, &master_wfds);
+            FD_SET(connfd, &master_rfds);
           } else if (commands[connfd] == GET) {
             // send get file
             fprintf(stderr, "send file, fd = %d, offset = %d\n",
