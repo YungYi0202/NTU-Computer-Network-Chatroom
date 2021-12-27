@@ -29,7 +29,6 @@ void interactive(int sockfd) {
 
   do {
     n = send(sockfd, username, strlen(username), 0);
-    fprintf(stderr, "send %d bytes\n", n);
     recv(sockfd, buf, BUFLEN, 0);
     if (buf[0] == '0') {
       printf("username is in used, please try another:");
@@ -46,14 +45,11 @@ void interactive(int sockfd) {
     ssize_t zb;
     while((zb = getline(&line, &len, stdin)) <= 1) {}
 
-    fprintf(stderr, "receive user command: %s\n", line);
-    
     int command_argc = 0;
     char *pch;
     pch = strtok (line, " \n");
     while (pch != NULL)
     {
-      fprintf(stderr, "pch = %s\n", pch);
       if(command_argc == 0) strcpy(command, pch);
       else if(command_argc == 1) strcpy(filename, pch);
       command_argc++;
@@ -90,20 +86,16 @@ void interactive(int sockfd) {
       command[strlen(command) + 1] = 0;
       command[strlen(command)] = ' ';
       sprintf(command + strlen(command), "%d\n", (int)st.st_size);
-      fprintf(stderr, "command is %s\n", command);
     }
     n = send(sockfd, command, strlen(command), 0);
-    fprintf(stderr, "send %d bytes\n", n);
 
     switch (command[0]) {
       case 'p':
         n = recv(sockfd, buf, 2, 0);
-        fprintf(stderr, "recv %d bytes\n", n);
 
         file_fd = open(path, O_RDWR);
         while ((n = read(file_fd, buf, BUFLEN)) > 0) {
           int x = send(sockfd, buf, n, 0);
-          fprintf(stderr, "send %d bytes\n", x);
         }
 
         printf("put %s successfully\n", filename);
@@ -118,19 +110,15 @@ void interactive(int sockfd) {
           printf("The %s doesn’t exist\n", filename);
           break;
         }
-        fprintf(stderr, "receive %d bytes, file len = %d\n", n, file_len);
 
         sprintf(buf, "1\n");
         send(sockfd, buf, 2, 0);
 
-        fprintf(stderr, "open file at %s\n", path);
         file_fd = open(path, O_CREAT | O_RDWR, FILE_MODE);
         while (file_len > 0 &&
                (n = recv(sockfd, buf, min(file_len, BUFLEN), 0)) > 0) {
-          fprintf(stderr, "recv %d bytes\n", n);
           write(file_fd, buf, n);
           file_len -= n;
-          fprintf(stderr, "file len = %d\n", file_len);
         }
 
         printf("get %s successfully\n", filename);
@@ -147,7 +135,6 @@ void interactive(int sockfd) {
 
         if (len > 0) {
           n = recv(sockfd, buf, len, 0);
-          fprintf(stderr, "recv %d bytes\n", n);
           if (n > 0) {
             buf[n] = 0;
             printf("%s", buf);
@@ -176,7 +163,6 @@ int main(int argc, char *argv[]) {
   uint16_t port_num = 0;
   int port_l = strlen(port);
   for (int i = 0; i < port_l; i++) port_num = port_num * 10 + port[i] - '0';
-  fprintf(stderr, "port num = %d\n", port_num);
 
   struct sockaddr_in addr_in;
   addr_in.sin_family = AF_INET;
@@ -185,7 +171,6 @@ int main(int argc, char *argv[]) {
 
   int sockfd;
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  fprintf(stderr, "sockfd = %d\n", sockfd);
   if (sockfd >= 0) {
     int x = connect(sockfd, (struct sockaddr *)&addr_in, sizeof(addr_in));
     if (x == 0) {

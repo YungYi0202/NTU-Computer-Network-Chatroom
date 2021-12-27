@@ -87,7 +87,6 @@ void serve(int sockfd) {
 
     if (FD_ISSET(sockfd, &working_rfds)) {
       int connfd = accept(sockfd, NULL, NULL);
-      fprintf(stderr, "accept %d\n", connfd);
       FD_SET(connfd, &master_rfds);
       state[connfd] = STATE_RECV_USERNAME;
     }
@@ -102,7 +101,6 @@ void serve(int sockfd) {
             continue;
           }
           username[connfd][n] = 0;
-          fprintf(stderr, "adding user %s\n", username[connfd]);
 
           state[connfd] = STATE_SEND_USERNAME_VALID;
           FD_CLR(connfd, &master_rfds);
@@ -184,9 +182,6 @@ void serve(int sockfd) {
         if (state[connfd] == STATE_SEND_USERNAME_VALID) {
           int valid = 1;
           for (int iter_fd = 0; iter_fd < maxfd; iter_fd++) {
-            if(4 <= iter_fd && iter_fd < 7){
-              fprintf(stderr, "%d: username = %s\n", iter_fd, username[iter_fd]);
-            }
             if (iter_fd != connfd &&
                 strcmp(username[iter_fd], username[connfd]) == 0) {
               username[connfd][0] = 0;
@@ -195,8 +190,6 @@ void serve(int sockfd) {
           }
           sprintf(buf, "%d\n", valid);
           send(connfd, buf, 1, MSG_NOSIGNAL);
-
-          fprintf(stderr, "send %d to %d\n", valid, connfd);
 
           state[connfd] = valid ? STATE_RECV_COMMAND : STATE_RECV_USERNAME;
           FD_CLR(connfd, &master_wfds);
@@ -208,7 +201,6 @@ void serve(int sockfd) {
             strcpy(path + strlen(path), filename[connfd]);
             int valid;
             if ((valid = stat(path, &st)) == -1) {
-              fprintf(stderr, "the file doesn't exist\n");
               sprintf(buf, "0\n");
               send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
               state[connfd] = STATE_RECV_COMMAND;
@@ -224,7 +216,6 @@ void serve(int sockfd) {
             for (std::string s : ls[connfd]) sum += s.length();
             sprintf(buf, "%d\n", sum + ls[connfd].size());
             n = send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
-            fprintf(stderr, "send %d bytes\n", n);
             state[connfd] = STATE_CHECK_FILESIZE;
           }
           FD_CLR(connfd, &master_wfds);
@@ -232,7 +223,6 @@ void serve(int sockfd) {
         } else if (state[connfd] == STATE_CHECK_FILESIZE) {
           sprintf(buf, "1\n");
           n = send(connfd, buf, 2, MSG_NOSIGNAL);
-          fprintf(stderr, "send %d bytes\n", n);
           state[connfd] = STATE_RCSN_FILE;
           FD_CLR(connfd, &master_wfds);
           FD_SET(connfd, &master_rfds);
@@ -258,21 +248,16 @@ void serve(int sockfd) {
             FD_SET(connfd, &master_rfds);
           } else if (commands[connfd] == GET) {
             // send get file
-            fprintf(stderr, "send file, fd = %d, offset = %d\n",
-                    file_fd[connfd], offset[connfd]);
             if (file_fd[connfd] == -1) {
               strcpy(path, server_dir);
               strcpy(path + strlen(path), filename[connfd]);
               file_fd[connfd] = open(path, O_RDWR);
-              fprintf(stderr, "open file %s with length %d at %d\n", path,
-                      filelen[connfd], file_fd[connfd]);
             }
 
             n = pread(file_fd[connfd], buf, std::min(BUFLEN, filelen[connfd]),
                       offset[connfd]);
             if (n > 0) {
               int x = send(connfd, buf, n, MSG_NOSIGNAL);
-              fprintf(stderr, "send %d bytes\n", x);
               filelen[connfd] -= n;
               offset[connfd] += n;
             }
