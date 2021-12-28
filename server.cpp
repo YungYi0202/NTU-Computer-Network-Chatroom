@@ -1,6 +1,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <sqlite3.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -39,6 +40,8 @@ int state[2048], commands[2048], filelen[2048], file_fd[2048];
 char filename[2048][64], username[2048][16];
 off_t offset[2048];
 std::vector<std::string> ls[2048];
+
+sqlite3 *db;
 
 void dopath(int connfd) {
   struct dirent *dirp;
@@ -140,7 +143,7 @@ void serve(int sockfd) {
           FD_SET(connfd, &master_wfds);
 
         } else if (state[connfd] == STATE_CHECK_FILESIZE) {
-          if((n = recv(connfd, buf, 2, 0)) <= 0){
+          if ((n = recv(connfd, buf, 2, 0)) <= 0) {
             username[connfd][0] = 0;
             continue;
           }
@@ -155,7 +158,8 @@ void serve(int sockfd) {
           }
 
           if (filelen[connfd] > 0) {
-            if((n = recv(connfd, buf, std::min(filelen[connfd], BUFLEN), 0)) <= 0){
+            if ((n = recv(connfd, buf, std::min(filelen[connfd], BUFLEN), 0)) <=
+                0) {
               username[connfd][0] = 0;
               continue;
             }
@@ -250,7 +254,7 @@ void serve(int sockfd) {
             n = pread(file_fd[connfd], buf, std::min(BUFLEN, filelen[connfd]),
                       offset[connfd]);
             if (n > 0) {
-              int x = send(connfd, buf, n, MSG_NOSIGNAL);
+              send(connfd, buf, n, MSG_NOSIGNAL);
               filelen[connfd] -= n;
               offset[connfd] += n;
             }
@@ -270,10 +274,9 @@ void serve(int sockfd) {
   }
 }
 
-
 static int initServer(unsigned short port) {
   struct sockaddr_in server_addr;
-  int sockfd = socket(AF_INET , SOCK_STREAM , 0);
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) ERR_EXIT("socket");
 
   bzero(&server_addr, sizeof(server_addr));
@@ -281,13 +284,25 @@ static int initServer(unsigned short port) {
   server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   server_addr.sin_port = htons(port);
 
-  if (bind(sockfd, (struct sockaddr*)& server_addr, sizeof(server_addr)) < 0) {
-      ERR_EXIT("bind");
+  if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    ERR_EXIT("bind");
   }
   if (listen(sockfd, MAXFD) < 0) {
-      ERR_EXIT("listen");
+    ERR_EXIT("listen");
   }
   return sockfd;
+}
+void createDatabase() {
+  int rc;
+
+  rc = sqlite3_open("chatroom.db", &db);
+
+  if (rc) {
+    fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+    exit(0);
+  } else {
+    fprintf(stderr, "Opened database successfully\n");
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -296,8 +311,10 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  mkdir("server_dir", DIR_MODE);
+  createDatabase();
 
-  int sockfd = initServer((unsigned short) atoi(argv[1]));
-  serve(sockfd); 
+  int sockfd = initServer((unsigned short)atoi(argv[1]));
+  serve(sockfd);
+
+  sqlite3_close(db);
 }
