@@ -16,21 +16,63 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
+#include <fstream>
+
 #define ERR_EXIT(a) \
   do {              \
     perror(a);      \
     exit(1);        \
   } while (0)
-#define BUF_LEN 1024
+#define BUF_LEN 2048
 #define MAXFD 1024
 #define SVR_PORT 8080
+#define CRLF "\r\n" 
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 #define STATE_UNUSED 0
 #define STATE_NO_USERNAME 1
-#define STATE_LINK 2
+#define STATE_RECV_REQ 2
+#define STATE_SEND_GET_RES 3
+#define STATE_SEND_POST_RES 4
+
+class HttpGet {
+public:
+  bool isHeaderWritten;
+  std::string statusCode;
+  std::string contentType;
+  std::ifstream targetFile;
+  HttpGet() {}
+  HttpGet(std::string target, std::string type="", std::string status="200 OK") {
+    isHeaderWritten = false;
+    targetFile.open(target);
+    statusCode = status;
+    setContentType(type);
+  }
+  
+  void setContentType(std::string type) {
+    if (type == ".html") {
+      contentType = "text/html";
+    } else if (type == ".ico") {
+      contentType = "image/vnd.microsoft.icon";
+    } else if (type == ".jpg" || type == ".jpeg") {
+      contentType = "image/jpeg";
+    } else if (type == ".css") {
+      contentType = "text/css";
+    } else if (type == ".scss") {
+      contentType = "text/x-scss";
+    } else if (type == ".js") {
+      contentType = "text/javascript";
+    } else {
+      contentType = "text/plain";
+    }
+    // TODO:
+  }
+  std::string Header() {
+    return "HTTP/1.1 " + statusCode + "\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
+  }
+};
 
 class Server {
 public:  // TODO: modify access
@@ -39,6 +81,7 @@ public:  // TODO: modify access
     int fd;
     int state;
     char username[10];
+    HttpGet getRes;
     client() {
       reset();
     }
@@ -49,45 +92,36 @@ public:  // TODO: modify access
     }
     void start(int _fd) {
       fd = _fd;
-      state = STATE_NO_USERNAME;
+      state = STATE_RECV_REQ;
     }
   };
-
-  /*
-  class Http {
-  public:
-    std::string get() {
-      return getHeader() + getContent();
-    }
-    std::string getHeader() {
-      return "HTTP/1.1 200 OK\r\n"
-      "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-    }
-    std::string getContent() {
-      return "<!DOCTYPE html><html><head><title>Bye-bye baby bye-bye</title>"
-      "<style>body { background-color: #111 }"
-      "h1 { font-size:4cm; text-align: center; color: black;"
-      " text-shadow: 0 0 2mm red}</style></head>"
-      "<body><h1>Goodbye, world!</h1></body></html>\r\n";
-    }
-  };
-  */
 
   static const int maxfd = MAXFD;
   int sockfd;
-  std::string indexResponse =
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-      "<!DOCTYPE html><html><head><title>Bye-bye baby bye-bye</title></head>"
-      "<body><h1>Goodbye, world!</h1><form method=\"post\" action=\"\">"
-      "<input type=\"text\" name=\"username\" />"
-      "<input type=\"submit\" />"
-      "</form></body></html>\r\n";
-
   client clients[maxfd];
-  fd_set master_rfds, working_rfds;
+  fd_set master_rfds, working_rfds, master_wfds, working_wfds;
   char buf[BUF_LEN];
-
+  
+  HttpGet GetResponse(std::string target) {
+    if (target == "/") {
+      // Default: return index.html
+      // target = "/index.html";
+      target = "/index2.html";
+    } 
+    if (target.size() > 1){
+      // TODO: Ask server.cpp
+      // TODO: Json format
+      target = target.substr(1);
+      std::string type;
+      std::size_t dotPos=target.find('.');
+      if (dotPos != std::string::npos) {
+        type = target.substr(dotPos);
+        return HttpGet(target, type);
+      }
+    }
+    return HttpGet(target);
+  }
+  
   void initServer() {
     int one = 1;
     struct sockaddr_in svr_addr;
@@ -114,6 +148,7 @@ public:  // TODO: modify access
     clients[sockfd].fd = sockfd;
 
     FD_ZERO(&master_rfds);
+    FD_ZERO(&master_wfds);
     FD_SET(sockfd, &master_rfds);
 
     struct sockaddr_in client_addr;
@@ -122,7 +157,11 @@ public:  // TODO: modify access
 
     while (1) {
       memcpy(&working_rfds, &master_rfds, sizeof(master_rfds));
-      select(maxfd, &working_rfds, NULL, NULL, NULL);
+      memcpy(&working_wfds, &master_wfds, sizeof(master_wfds));
+      if (select(maxfd, &working_rfds, &working_wfds, NULL, NULL) < 0) {
+        ERR_EXIT("select failed");
+      }
+
       if (FD_ISSET(sockfd, &working_rfds)) {
         if ((clifd = accept(sockfd, (struct sockaddr *)&client_addr,
                              (socklen_t *)&clilen)) < 0) {
@@ -136,29 +175,51 @@ public:  // TODO: modify access
         clients[clifd].start(clifd);
       }
 
-      for (int fd = sockfd + 1; fd < maxfd; fd++) {
-        if (!FD_ISSET(fd, &working_rfds)) continue;
-        handleRead(fd);
-        std::stringstream ss;
-        std::string req(buf);
-        ss << req;
-        std::string command, target;
-        ss >> command >> target;
+      for (int fd = 0; fd < maxfd; fd++) {
+        if (fd == sockfd) continue;
         
-        if (command == "GET") {
-          if (target == "/") {
-            handleWrite(fd, indexResponse, true);
-          } else {
-            // TODO:
-            fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+        if (FD_ISSET(fd, &working_rfds)) {
+          if (clients[fd].state == STATE_RECV_REQ) {
+            // TODO: What if buf is too small?
+            handleRead(fd);
+            std::stringstream ss;
+            std::string req(buf);
+            ss << req;
+            std::string command, target;
+            ss >> command >> target;
+            if (command == "GET") { 
+              clients[fd].getRes = GetResponse(target);
+              clients[fd].state = STATE_SEND_GET_RES;
+              FD_SET(fd, &master_wfds);
+            } else if (command == "POST") {
+              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+            }
+            else {
+              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+            }
           }
-        } else if (command == "POST") {
-
-        }
-        else {
-          fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
-        }
-        closeFD(fd);
+          // TODO: Other states.
+        } else if (FD_ISSET(fd, &working_wfds)) {
+          if (clients[fd].state == STATE_SEND_GET_RES) {
+            std::string tmp;
+            if (clients[fd].getRes.isHeaderWritten) {
+              if (clients[fd].getRes.targetFile && getline (clients[fd].getRes.targetFile, tmp)) {
+                handleWrite(fd, tmp);
+              } else {
+                // End
+                handleWrite(fd, CRLF);
+                if (clients[fd].getRes.targetFile) {
+                  clients[fd].getRes.targetFile.close();
+                }
+                closeFD(fd);
+              }
+            } else {
+              handleWrite(fd, clients[fd].getRes.Header());
+              clients[fd].getRes.isHeaderWritten = true;
+            }
+          } 
+          // TODO: Other states.
+        }     
       }
     }
   }
@@ -166,7 +227,7 @@ public:  // TODO: modify access
   void closeFD(int fd) {
     fprintf(stderr, "closeFD: %d\n", fd);
     FD_CLR(fd, &master_rfds);   //?
-    FD_CLR(fd, &working_rfds);  //?
+    FD_CLR(fd, &master_wfds);   //?
     close(fd);
     clients[fd].reset();
   }
@@ -179,22 +240,23 @@ public:  // TODO: modify access
       closeFD(fd);
     } else {
       fprintf(stderr, "========handleRead: fd:%d=========\n",fd);
-      fprintf(stderr, "%s\n", buf);
+      fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
     return ret;
   }
 
-  int handleWrite(int fd, std::string str, bool isHTTP) {
+  int handleWrite(int fd, std::string str) {
     sprintf(buf, "%s", str.c_str());
-    int writeLen = (isHTTP) ? strlen(buf) - 1 : strlen(buf);
+    // int writeLen = (isHTTP) ? strlen(buf) - 1 : strlen(buf);
+    int writeLen = strlen(buf);
     int ret = write(fd, buf, writeLen);
     if (ret != writeLen && fd > 0 && clients[fd].fd != -1) {
       fprintf(stderr, "handleWrite: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleWrite: fd:%d=========\n",fd);
-      fprintf(stderr, "%s\n", buf);
+      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",fd, buf[strlen(buf) - 1]);
+      fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
     return ret;
