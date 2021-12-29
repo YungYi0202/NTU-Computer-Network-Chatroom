@@ -239,6 +239,8 @@ public:  // TODO: modify access
 
 class Client {
  public:
+  int server_fd;
+
   void initClient(char *ip, int port_num) {
     mkdir("client_dir", DIR_MODE);
 
@@ -247,16 +249,15 @@ class Client {
     addr_in.sin_port = htons(port_num);
     addr_in.sin_addr.s_addr = inet_addr(ip);
 
-    int server_fd;
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd >= 0) {
       int x = connect(server_fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
-      if (x == 0) {
-        interactive(server_fd);
-      } else
+      if (x != 0) {
         close(server_fd);
+      }
     }
   }
+
   void interactive(int server_fd) {
     char username[16], command[128], filename[64],
         client_dir[64] = "./client_dir/", path[64];
@@ -336,7 +337,7 @@ class Client {
 
           file_fd = open(path, O_RDWR);
           while ((n = read(file_fd, buf, BUF_LEN)) > 0) {
-            int x = send(server_fd, buf, n, 0);
+            send(server_fd, buf, n, 0);
           }
 
           printf("put %s successfully\n", filename);
@@ -395,9 +396,6 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  server.initServer();
-  server.serve();
-
   char ip[32], port[32];
   char *pch;
   pch = strtok(argv[1], ":");
@@ -409,5 +407,8 @@ int main(int argc, char *argv[]) {
   int port_l = strlen(port);
   for (int i = 0; i < port_l; i++) port_num = port_num * 10 + port[i] - '0';
 
-  // client.initClient(ip, port_num);
+  client.initClient(ip, port_num);
+
+  server.initServer();
+  server.serve();
 }

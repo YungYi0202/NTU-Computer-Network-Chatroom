@@ -7,9 +7,9 @@ TARGET=server client
 all: $(TARGET)
 
 server: server.cpp
-	g++ -g -Wall -std=c++11 $^ -o $@
+	g++ -g -Wall -std=c++11 -l sqlite3 $^ -o $@
 client: client.cpp
-	g++ -g -Wall -std=c++11 $^ -o $@
+	g++ -g -Wall -std=c++11 -l sqlite3 $^ -o $@
 
 clean:
 	rm -f $(TARGET)
