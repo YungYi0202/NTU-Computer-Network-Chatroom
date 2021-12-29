@@ -23,7 +23,7 @@
     perror(a);      \
     exit(1);        \
   } while (0)
-#define BUF_LEN 1024
+#define BUF_LEN 2048
 #define MAXFD 1024
 #define SVR_PORT 8080
 #define CRLF "\r\n" 
@@ -33,7 +33,46 @@
 
 #define STATE_UNUSED 0
 #define STATE_NO_USERNAME 1
-#define STATE_LINK 2
+#define STATE_RECV_REQ 2
+#define STATE_SEND_GET_RES 3
+#define STATE_SEND_POST_RES 4
+
+class HttpGet {
+public:
+  bool isHeaderWritten;
+  std::string statusCode;
+  std::string contentType;
+  std::ifstream targetFile;
+  HttpGet() {}
+  HttpGet(std::string target, std::string type="", std::string status="200 OK") {
+    isHeaderWritten = false;
+    targetFile.open(target);
+    statusCode = status;
+    setContentType(type);
+  }
+  
+  void setContentType(std::string type) {
+    if (type == ".html") {
+      contentType = "text/html";
+    } else if (type == ".ico") {
+      contentType = "image/vnd.microsoft.icon";
+    } else if (type == ".jpg" || type == ".jpeg") {
+      contentType = "image/jpeg";
+    } else if (type == ".css") {
+      contentType = "text/css";
+    } else if (type == ".scss") {
+      contentType = "text/x-scss";
+    } else if (type == ".js") {
+      contentType = "text/javascript";
+    } else {
+      contentType = "text/plain";
+    }
+    // TODO:
+  }
+  std::string Header() {
+    return "HTTP/1.1 " + statusCode + "\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
+  }
+};
 
 class Server {
 public:  // TODO: modify access
@@ -42,6 +81,7 @@ public:  // TODO: modify access
     int fd;
     int state;
     char username[10];
+    HttpGet getRes;
     client() {
       reset();
     }
@@ -52,7 +92,7 @@ public:  // TODO: modify access
     }
     void start(int _fd) {
       fd = _fd;
-      state = STATE_NO_USERNAME;
+      state = STATE_RECV_REQ;
     }
   };
 
@@ -62,68 +102,25 @@ public:  // TODO: modify access
   fd_set master_rfds, working_rfds, master_wfds, working_wfds;
   char buf[BUF_LEN];
   
-  void sendResponseForGet(int fd, std::string target) {
-    std::string contentType = "text/plain";
+  HttpGet GetResponse(std::string target) {
     if (target == "/") {
       // Default: return index.html
-      target = "/index.html";
-      // target = "/index2.html";
+      // target = "/index.html";
+      target = "/index2.html";
     } 
     if (target.size() > 1){
       // TODO: Ask server.cpp
+      // TODO: Json format
       target = target.substr(1);
       std::string type;
       std::size_t dotPos=target.find('.');
       if (dotPos != std::string::npos) {
         type = target.substr(dotPos);
-        if (type == ".html") {
-          contentType = "text/html";
-        } else if (type == ".ico") {
-          contentType = "image/vnd.microsoft.icon";
-        } else if (type == ".jpg" || type == ".jpeg") {
-          contentType = "image/jpeg";
-        } else if (type == ".css") {
-          contentType = "text/css";
-        } else if (type == ".scss") {
-          contentType = "text/x-scss";
-        }
-        // TODO: Else
+        return HttpGet(target, type);
       }
     }
-
-    FD_SET(fd, &master_wfds);
-    bool isHeaderWritten = false;
-    std::string tmp;
-    std::ifstream targetFile(target); 
-
-    while(1) {
-      memcpy(&working_wfds, &master_wfds, sizeof(master_wfds));
-      select(maxfd, NULL, &working_wfds, NULL, NULL);
-      if (FD_ISSET(fd, &working_rfds)) {
-        if (isHeaderWritten) {
-          if (targetFile && getline (targetFile, tmp)) {
-            handleWrite(fd, tmp);
-          } else {
-            handleWrite(fd, CRLF);
-            break;
-          }
-        } else {
-          handleWrite(fd, HeaderForGet(contentType));
-          isHeaderWritten = true;
-        }
-      }
-    }
-
-    FD_CLR(fd, &master_wfds);
-    if (targetFile) {
-      targetFile.close();
-    }
+    return HttpGet(target);
   }
-
-  std::string HeaderForGet(std::string contentType) {
-    return "HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
-  }
-  
   
   void initServer() {
     int one = 1;
@@ -160,7 +157,11 @@ public:  // TODO: modify access
 
     while (1) {
       memcpy(&working_rfds, &master_rfds, sizeof(master_rfds));
-      select(maxfd, &working_rfds, NULL, NULL, NULL);
+      memcpy(&working_wfds, &master_wfds, sizeof(master_wfds));
+      if (select(maxfd, &working_rfds, &working_wfds, NULL, NULL) < 0) {
+        ERR_EXIT("select failed");
+      }
+
       if (FD_ISSET(sockfd, &working_rfds)) {
         if ((clifd = accept(sockfd, (struct sockaddr *)&client_addr,
                              (socklen_t *)&clilen)) < 0) {
@@ -174,24 +175,51 @@ public:  // TODO: modify access
         clients[clifd].start(clifd);
       }
 
-      for (int fd = sockfd + 1; fd < maxfd; fd++) {
-        if (!FD_ISSET(fd, &working_rfds)) continue;
-        handleRead(fd);
-        std::stringstream ss;
-        std::string req(buf);
-        ss << req;
-        std::string command, target;
-        ss >> command >> target;
+      for (int fd = 0; fd < maxfd; fd++) {
+        if (fd == sockfd) continue;
         
-        if (command == "GET") { 
-          sendResponseForGet(fd, target);
-        } else if (command == "POST") {
-          fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
-        }
-        else {
-          fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
-        }
-        closeFD(fd);
+        if (FD_ISSET(fd, &working_rfds)) {
+          if (clients[fd].state == STATE_RECV_REQ) {
+            // TODO: What if buf is too small?
+            handleRead(fd);
+            std::stringstream ss;
+            std::string req(buf);
+            ss << req;
+            std::string command, target;
+            ss >> command >> target;
+            if (command == "GET") { 
+              clients[fd].getRes = GetResponse(target);
+              clients[fd].state = STATE_SEND_GET_RES;
+              FD_SET(fd, &master_wfds);
+            } else if (command == "POST") {
+              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+            }
+            else {
+              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+            }
+          }
+          // TODO: Other states.
+        } else if (FD_ISSET(fd, &working_wfds)) {
+          if (clients[fd].state == STATE_SEND_GET_RES) {
+            std::string tmp;
+            if (clients[fd].getRes.isHeaderWritten) {
+              if (clients[fd].getRes.targetFile && getline (clients[fd].getRes.targetFile, tmp)) {
+                handleWrite(fd, tmp);
+              } else {
+                // End
+                handleWrite(fd, CRLF);
+                if (clients[fd].getRes.targetFile) {
+                  clients[fd].getRes.targetFile.close();
+                }
+                closeFD(fd);
+              }
+            } else {
+              handleWrite(fd, clients[fd].getRes.Header());
+              clients[fd].getRes.isHeaderWritten = true;
+            }
+          } 
+          // TODO: Other states.
+        }     
       }
     }
   }
@@ -200,8 +228,6 @@ public:  // TODO: modify access
     fprintf(stderr, "closeFD: %d\n", fd);
     FD_CLR(fd, &master_rfds);   //?
     FD_CLR(fd, &master_wfds);   //?
-    // FD_CLR(fd, &working_rfds);  //?
-    // FD_CLR(fd, &working_wfds);  //?
     close(fd);
     clients[fd].reset();
   }
