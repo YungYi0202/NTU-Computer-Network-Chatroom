@@ -1,7 +1,6 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <sqlite3.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -12,6 +11,8 @@
 #include <set>
 #include <string>
 #include <vector>
+
+#include "sqlite3.h"
 
 #define ERR_EXIT(a) \
   do {              \
