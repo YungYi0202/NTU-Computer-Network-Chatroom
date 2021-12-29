@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
+#include <fstream>
+
 #define ERR_EXIT(a) \
   do {              \
     perror(a);      \
@@ -24,6 +26,7 @@
 #define BUF_LEN 1024
 #define MAXFD 1024
 #define SVR_PORT 8080
+#define CRLF "\r\n" 
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
@@ -53,41 +56,75 @@ public:  // TODO: modify access
     }
   };
 
-  /*
-  class Http {
-  public:
-    std::string get() {
-      return getHeader() + getContent();
-    }
-    std::string getHeader() {
-      return "HTTP/1.1 200 OK\r\n"
-      "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-    }
-    std::string getContent() {
-      return "<!DOCTYPE html><html><head><title>Bye-bye baby bye-bye</title>"
-      "<style>body { background-color: #111 }"
-      "h1 { font-size:4cm; text-align: center; color: black;"
-      " text-shadow: 0 0 2mm red}</style></head>"
-      "<body><h1>Goodbye, world!</h1></body></html>\r\n";
-    }
-  };
-  */
-
   static const int maxfd = MAXFD;
   int sockfd;
-  std::string indexResponse =
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-      "<!DOCTYPE html><html><head><title>Bye-bye baby bye-bye</title></head>"
-      "<body><h1>Goodbye, world!</h1><form method=\"post\" action=\"\">"
-      "<input type=\"text\" name=\"username\" />"
-      "<input type=\"submit\" />"
-      "</form></body></html>\r\n";
-
   client clients[maxfd];
-  fd_set master_rfds, working_rfds;
+  fd_set master_rfds, working_rfds, master_wfds, working_wfds;
   char buf[BUF_LEN];
+  
+  void sendResponseForGet(int fd, std::string target) {
+    std::string contentType = "text/plain";
+    if (target == "/") {
+      // Default: return index.html
+      target = "/index.html";
+      // target = "/index2.html";
+    } 
+    if (target.size() > 1){
+      // TODO: Ask server.cpp
+      target = target.substr(1);
+      std::string type;
+      std::size_t dotPos=target.find('.');
+      if (dotPos != std::string::npos) {
+        type = target.substr(dotPos);
+        if (type == ".html") {
+          contentType = "text/html";
+        } else if (type == ".ico") {
+          contentType = "image/vnd.microsoft.icon";
+        } else if (type == ".jpg" || type == ".jpeg") {
+          contentType = "image/jpeg";
+        } else if (type == ".css") {
+          contentType = "text/css";
+        } else if (type == ".scss") {
+          contentType = "text/x-scss";
+        }
+        // TODO: Else
+      }
+    }
 
+    FD_SET(fd, &master_wfds);
+    bool isHeaderWritten = false;
+    std::string tmp;
+    std::ifstream targetFile(target); 
+
+    while(1) {
+      memcpy(&working_wfds, &master_wfds, sizeof(master_wfds));
+      select(maxfd, NULL, &working_wfds, NULL, NULL);
+      if (FD_ISSET(fd, &working_rfds)) {
+        if (isHeaderWritten) {
+          if (targetFile && getline (targetFile, tmp)) {
+            handleWrite(fd, tmp);
+          } else {
+            handleWrite(fd, CRLF);
+            break;
+          }
+        } else {
+          handleWrite(fd, HeaderForGet(contentType));
+          isHeaderWritten = true;
+        }
+      }
+    }
+
+    FD_CLR(fd, &master_wfds);
+    if (targetFile) {
+      targetFile.close();
+    }
+  }
+
+  std::string HeaderForGet(std::string contentType) {
+    return "HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
+  }
+  
+  
   void initServer() {
     int one = 1;
     struct sockaddr_in svr_addr;
@@ -114,6 +151,7 @@ public:  // TODO: modify access
     clients[sockfd].fd = sockfd;
 
     FD_ZERO(&master_rfds);
+    FD_ZERO(&master_wfds);
     FD_SET(sockfd, &master_rfds);
 
     struct sockaddr_in client_addr;
@@ -145,15 +183,10 @@ public:  // TODO: modify access
         std::string command, target;
         ss >> command >> target;
         
-        if (command == "GET") {
-          if (target == "/") {
-            handleWrite(fd, indexResponse, true);
-          } else {
-            // TODO:
-            fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
-          }
+        if (command == "GET") { 
+          sendResponseForGet(fd, target);
         } else if (command == "POST") {
-
+          fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
         }
         else {
           fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
@@ -166,7 +199,9 @@ public:  // TODO: modify access
   void closeFD(int fd) {
     fprintf(stderr, "closeFD: %d\n", fd);
     FD_CLR(fd, &master_rfds);   //?
-    FD_CLR(fd, &working_rfds);  //?
+    FD_CLR(fd, &master_wfds);   //?
+    // FD_CLR(fd, &working_rfds);  //?
+    // FD_CLR(fd, &working_wfds);  //?
     close(fd);
     clients[fd].reset();
   }
@@ -179,22 +214,23 @@ public:  // TODO: modify access
       closeFD(fd);
     } else {
       fprintf(stderr, "========handleRead: fd:%d=========\n",fd);
-      fprintf(stderr, "%s\n", buf);
+      fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
     return ret;
   }
 
-  int handleWrite(int fd, std::string str, bool isHTTP) {
+  int handleWrite(int fd, std::string str) {
     sprintf(buf, "%s", str.c_str());
-    int writeLen = (isHTTP) ? strlen(buf) - 1 : strlen(buf);
+    // int writeLen = (isHTTP) ? strlen(buf) - 1 : strlen(buf);
+    int writeLen = strlen(buf);
     int ret = write(fd, buf, writeLen);
     if (ret != writeLen && fd > 0 && clients[fd].fd != -1) {
       fprintf(stderr, "handleWrite: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleWrite: fd:%d=========\n",fd);
-      fprintf(stderr, "%s\n", buf);
+      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",fd, buf[strlen(buf) - 1]);
+      fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
     return ret;
