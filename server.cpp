@@ -23,8 +23,9 @@
 #define BUFLEN 512
 #define MAXFD 128
 
-class Database {
+class Client {
  public:
+  int connfd;
   sqlite3 *db;
   char *zErrMsg = 0;
   char csql[BUFLEN];
@@ -81,9 +82,19 @@ class Database {
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "delete friend");
   }
+  static int listFriendCallback(void *connfd, int argc, char **argv,
+                                char **azColName) {
+    char buf[BUFLEN];
+    for (int i = 0; i < argc; i++) {
+      sprintf(buf + strlen(buf), "(%d) %s ", i + 1, argv[i] ? argv[i] : "NULL");
+    }
+    sprintf(buf + strlen(buf), "\n");
+    send(*(int*)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    return 0;
+  }
   void listFriends(char *username) {
     sprintf(csql, "SELECT FRIEND FROM CHATROOM WHERE USERNAME='%s';", username);
-    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    int rc = sqlite3_exec(db, csql, listFriendCallback, &connfd, &zErrMsg);
     errorHandling(rc, "list friends");
   }
   void addHistory(char *username, char *friend_name, char *history) {
@@ -101,33 +112,83 @@ class Database {
     rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "add history");
   }
+  static int printHistoryCallback(void *connfd, int argc, char **argv,
+                                char **azColName) {
+    char buf[BUFLEN];
+    for (int i = 0; i < argc; i++) {
+      sprintf(buf + strlen(buf), "%s\n", argv[i] ? argv[i] : "NULL");
+    }
+    send(*(int*)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    return 0;
+    // TODO: the history should not be longer than 512 characters
+  }
+  void printHistory(char *username, char *friend_name) {
+    sprintf(csql,
+            "SELECT HISTORY FROM CHATROOM WHERE USERNAME='%s' AND FRIEND='%s';",
+            username, friend_name);
+    int rc = sqlite3_exec(db, csql, printHistoryCallback, &connfd, &zErrMsg);
+    errorHandling(rc, "print history");
+  }
   void printDatabase() {
     sprintf(csql, "SELECT * FROM CHATROOM;");
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "print database");
   }
-} database;
+};
 
+void *handling_client(void *arg) {
+  int connfd = *(int *)arg;
+  Client client;
+  client.connfd = connfd;
+  int n;
+
+  // get username (required before commands)
+  char username[BUFLEN], buf[BUFLEN];
+  n = recv(connfd, username, BUFLEN, 0);
+  if (n <= 0) {
+    close(connfd);
+    pthread_exit((void *)1);
+  }
+  n = send(connfd, "0", 2, MSG_NOSIGNAL);
+
+  char command[BUFLEN];
+  while (1) {
+    n = recv(connfd, command, BUFLEN, 0);
+    if (n <= 0) {
+      close(connfd);
+      pthread_exit((void *)1);
+    }
+    // TODO: process command
+    // (1) add $friend
+    // (2) delete $friend
+    // (3) ls
+    // (4) history $friend
+    // (5) say $friend $something
+  }
+}
+
+#define MAX_CLIENT 128
+pthread_t ntid[MAX_CLIENT];
 void serve(int sockfd) {
   int maxfd = MAXFD;
-  fd_set master_rfds, working_rfds, master_wfds, working_wfds;
+  int ntid_cnt = 0;
+  fd_set master_rfds, working_rfds;
 
   FD_ZERO(&master_rfds);
-  FD_ZERO(&master_wfds);
   FD_SET(sockfd, &master_rfds);
 
   while (1) {
     working_rfds = master_rfds;
-    working_wfds = master_wfds;
-    if (select(maxfd, &working_rfds, &working_wfds, NULL, NULL) < 0) {
+    if (select(maxfd, &working_rfds, NULL, NULL, NULL) < 0) {
       fprintf(stderr, "select failed\n");
     }
 
     if (FD_ISSET(sockfd, &working_rfds)) {
       int connfd = accept(sockfd, NULL, NULL);
-      FD_SET(connfd, &master_rfds);
+      pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
     }
   }
+  // pthread_join(ntid[?], NULL);
 }
 
 static int initServer(unsigned short port) {
@@ -154,10 +215,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "usage: ./server [port]\n");
     exit(1);
   }
-
-  database.openDatabase();
-  database.createDatabase();
-  database.closeDatabase();
+  // init create database;
+  // database.openDatabase();
+  // database.closeDatabase();
 
   int sockfd = initServer((unsigned short)atoi(argv[1]));
   serve(sockfd);
