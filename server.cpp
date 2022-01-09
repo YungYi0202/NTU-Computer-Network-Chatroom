@@ -27,6 +27,7 @@ class Database {
  public:
   sqlite3 *db;
   char *zErrMsg = 0;
+  char csql[BUFLEN];
   static int callback(void *NotUsed, int argc, char **argv, char **azColName) {
     int i;
     for (i = 0; i < argc; i++) {
@@ -35,36 +36,76 @@ class Database {
     printf("\n");
     return 0;
   }
-  void openDatabase() {
-    int rc;
-
-    rc = sqlite3_open("chatroom.db", &db);
-
-    if (rc) {
-      fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
-      exit(0);
-    } else {
-      fprintf(stderr, "Opened database successfully\n");
-    }
-  }
-  void closeDatabase() { sqlite3_close(db); }
-  void createDatabase() {
-    char sql[] =
-        "CREATE TABLE CHATROOM("
-        "USERNAME  VARCHAR(20) NOT NULL,"
-        "FRIEND    VARCHAR(20) NOT NULL,"
-        "HISTORY   TEXT,"
-        "PRIMARY KEY (USERNAME, FRIEND)"
-        ");";
-    int rc = sqlite3_exec(db, sql, callback, 0, &zErrMsg);
+  void errorHandling(int rc, const char *msg) {
     if (rc != SQLITE_OK) {
       fprintf(stderr, "SQL error: %s\n", zErrMsg);
       sqlite3_free(zErrMsg);
     } else {
-      fprintf(stderr, "Table created successfully\n");
+      fprintf(stderr, "Successfully %s.\n", msg);
     }
   }
-  void addFriend() { char sql[] = ""; }
+  void openDatabase() {
+    int rc;
+
+    rc = sqlite3_open("chatroom.db", &db);
+    if (rc) {
+      fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+      exit(0);
+    } else {
+      fprintf(stderr, "Successfully open database\n");
+    }
+  }
+  void closeDatabase() { sqlite3_close(db); }
+  void createDatabase() {
+    sprintf(csql,
+            "CREATE TABLE CHATROOM("
+            "USERNAME  VARCHAR(20) NOT NULL,"
+            "FRIEND    VARCHAR(20) NOT NULL,"
+            "HISTORY   TEXT,"
+            "PRIMARY KEY (USERNAME, FRIEND)"
+            ");");
+    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "create table");
+  }
+  void addFriend(char *username, char *friend_name) {
+    sprintf(csql,
+            "INSERT INTO CHATROOM "
+            "VALUES ('%s', '%s', ''); ",
+            username, friend_name);
+    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "add friend");
+  }
+  void deleteFriend(char *username, char *friend_name) {
+    sprintf(csql, "DELETE FROM CHATROOM WHERE USERNAME='%s' AND FRIEND='%s';",
+            username, friend_name);
+    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "delete friend");
+  }
+  void listFriends(char *username) {
+    sprintf(csql, "SELECT FRIEND FROM CHATROOM WHERE USERNAME='%s';", username);
+    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "list friends");
+  }
+  void addHistory(char *username, char *friend_name, char *history) {
+    sprintf(csql,
+            "UPDATE CHATROOM "
+            "SET HISTORY=HISTORY||'%s' "
+            "WHERE USERNAME='%s' AND FRIEND='%s'; ",
+            history, username, friend_name);
+    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    sprintf(csql,
+            "UPDATE CHATROOM "
+            "SET HISTORY=HISTORY||'%s' "
+            "WHERE USERNAME='%s' AND FRIEND='%s'; ",
+            history, friend_name, username);
+    rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "add history");
+  }
+  void printDatabase() {
+    sprintf(csql, "SELECT * FROM CHATROOM;");
+    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "print database");
+  }
 } database;
 
 void serve(int sockfd) {
