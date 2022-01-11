@@ -20,13 +20,13 @@
     exit(1);        \
   } while (0)
 
-#define BUFLEN 512
+#define BUFLEN 2048
 #define MAXFD 128
 
 class Client {
  public:
   int connfd;
-  sqlite3 *db;
+  sqlite3 *db, *users;
   char *zErrMsg = 0;
   char csql[BUFLEN];
   static int callback(void *NotUsed, int argc, char **argv, char **azColName) {
@@ -55,8 +55,19 @@ class Client {
     } else {
       fprintf(stderr, "Successfully open database\n");
     }
+
+    rc = sqlite3_open("username.db", &users);
+    if (rc) {
+      fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(users));
+      exit(0);
+    } else {
+      fprintf(stderr, "Successfully open database\n");
+    }
   }
-  void closeDatabase() { sqlite3_close(db); }
+  void closeDatabase() {
+    sqlite3_close(db);
+    sqlite3_close(users);
+  }
   void createDatabase() {
     sprintf(csql,
             "CREATE TABLE CHATROOM("
@@ -66,7 +77,15 @@ class Client {
             "PRIMARY KEY (USERNAME, FRIEND)"
             ");");
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
-    errorHandling(rc, "create table");
+    errorHandling(rc, "create database");
+
+    sprintf(csql,
+            "CREATE TABLE USERNAME("
+            "USERNAME VARCHAR(20) NOT NULL,"
+            "PRIMARY KEY (USERNAME)"
+            ");");
+    rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "create username table");
   }
   void addFriend(char *username, char *friend_name) {
     sprintf(csql,
@@ -89,7 +108,7 @@ class Client {
       sprintf(buf + strlen(buf), "(%d) %s ", i + 1, argv[i] ? argv[i] : "NULL");
     }
     sprintf(buf + strlen(buf), "\n");
-    send(*(int*)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
     return 0;
   }
   void listFriends(char *username) {
@@ -113,12 +132,12 @@ class Client {
     errorHandling(rc, "add history");
   }
   static int printHistoryCallback(void *connfd, int argc, char **argv,
-                                char **azColName) {
+                                  char **azColName) {
     char buf[BUFLEN];
     for (int i = 0; i < argc; i++) {
       sprintf(buf + strlen(buf), "%s\n", argv[i] ? argv[i] : "NULL");
     }
-    send(*(int*)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
     return 0;
     // TODO: the history should not be longer than 512 characters
   }
@@ -134,6 +153,30 @@ class Client {
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "print database");
   }
+  static int addUserCallback(void *connfd, int argc, char **argv,
+                             char **azColName) {
+    char buf[BUFLEN], csql[BUFLEN];
+    if (argc >= 1)
+      sprintf(buf, "0");
+    else {
+      sprintf(buf, "1");
+    }
+    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    return 0;
+    // TODO: the history should not be longer than 512 characters
+  }
+  void addUser(char *username) {
+    sprintf(csql,
+            "SELECT * FROM USERNAME WHERE USERNAME='%s';", username);
+    int rc = sqlite3_exec(users, csql, addUserCallback, &connfd, &zErrMsg);
+    errorHandling(rc, "query username");
+    sprintf(csql,
+            "INSERT INTO USERNAME "
+            "VALUES ('%s'); ",
+            username);
+    int rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "add username");
+  }
 };
 
 void *handling_client(void *arg) {
@@ -142,7 +185,8 @@ void *handling_client(void *arg) {
   client.connfd = connfd;
   int n;
 
-  char command[BUFLEN];
+  char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
+      something[BUFLEN];
   while (1) {
     n = recv(connfd, command, BUFLEN, 0);
     if (n <= 0) {
@@ -150,11 +194,55 @@ void *handling_client(void *arg) {
       pthread_exit((void *)1);
     }
     // TODO: process command
-    // (0) add $friend
-    // (1) delete $friend
-    // (2) ls
-    // (3) history $friend
-    // (4) say $friend $something
+
+    switch (command[0]) {
+      case 'a':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        client.addFriend(username, friend_name);
+      case 'd':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        client.deleteFriend(username, friend_name);
+      case 'l':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        client.listFriends(username);
+      case 'h':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        client.printHistory(username, friend_name);
+      case 's':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        pch = strtok(NULL, " ");
+        strcpy(something, pch);
+        client.addHistory(username, friend_name, something);
+      case 'j':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        client.addUser(username);
+    }
   }
 }
 
