@@ -14,9 +14,9 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <string>
-#include <sstream>
 #include <fstream>
+#include <sstream>
+#include <string>
 
 #define ERR_EXIT(a) \
   do {              \
@@ -26,7 +26,7 @@
 #define BUF_LEN 2048
 #define MAXFD 1024
 #define SVR_PORT 8080
-#define CRLF "\r\n" 
+#define CRLF "\r\n"
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
@@ -38,19 +38,20 @@
 #define STATE_SEND_POST_RES 4
 
 class HttpGet {
-public:
+ public:
   bool isHeaderWritten;
   std::string statusCode;
   std::string contentType;
   std::ifstream targetFile;
   HttpGet() {}
-  HttpGet(std::string target, std::string type="", std::string status="200 OK") {
+  HttpGet(std::string target, std::string type = "",
+          std::string status = "200 OK") {
     isHeaderWritten = false;
     targetFile.open(target);
     statusCode = status;
     setContentType(type);
   }
-  
+
   void setContentType(std::string type) {
     if (type == ".html") {
       contentType = "text/html";
@@ -70,21 +71,20 @@ public:
     // TODO:
   }
   std::string Header() {
-    return "HTTP/1.1 " + statusCode + "\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
+    return "HTTP/1.1 " + statusCode + "\r\nContent-Type: " + contentType +
+           "; charset=UTF-8\r\n\r\n";
   }
 };
 
 class Server {
-public:  // TODO: modify access
+ public:  // TODO: modify access
   class client {
-  public:
+   public:
     int fd;
     int state;
     char username[10];
     HttpGet getRes;
-    client() {
-      reset();
-    }
+    client() { reset(); }
     void reset() {
       fd = -1;
       state = STATE_UNUSED;
@@ -101,19 +101,19 @@ public:  // TODO: modify access
   client clients[maxfd];
   fd_set master_rfds, working_rfds, master_wfds, working_wfds;
   char buf[BUF_LEN];
-  
+
   HttpGet GetResponse(std::string target) {
     if (target == "/") {
       // Default: return index.html
       // target = "/index.html";
       target = "/index2.html";
-    } 
-    if (target.size() > 1){
+    }
+    if (target.size() > 1) {
       // TODO: Ask server.cpp
       // TODO: Json format
       target = target.substr(1);
       std::string type;
-      std::size_t dotPos=target.find('.');
+      std::size_t dotPos = target.find('.');
       if (dotPos != std::string::npos) {
         type = target.substr(dotPos);
         return HttpGet(target, type);
@@ -121,7 +121,7 @@ public:  // TODO: modify access
     }
     return HttpGet(target);
   }
-  
+
   void initServer() {
     int one = 1;
     struct sockaddr_in svr_addr;
@@ -164,7 +164,7 @@ public:  // TODO: modify access
 
       if (FD_ISSET(sockfd, &working_rfds)) {
         if ((clifd = accept(sockfd, (struct sockaddr *)&client_addr,
-                             (socklen_t *)&clilen)) < 0) {
+                            (socklen_t *)&clilen)) < 0) {
           ERR_EXIT("accept");
           continue;
         }
@@ -177,7 +177,7 @@ public:  // TODO: modify access
 
       for (int fd = 0; fd < maxfd; fd++) {
         if (fd == sockfd) continue;
-        
+
         if (FD_ISSET(fd, &working_rfds)) {
           if (clients[fd].state == STATE_RECV_REQ) {
             // TODO: What if buf is too small?
@@ -187,15 +187,16 @@ public:  // TODO: modify access
             ss << req;
             std::string command, target;
             ss >> command >> target;
-            if (command == "GET") { 
+            if (command == "GET") {
               clients[fd].getRes = GetResponse(target);
               clients[fd].state = STATE_SEND_GET_RES;
               FD_SET(fd, &master_wfds);
             } else if (command == "POST") {
-              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
-            }
-            else {
-              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+              fprintf(stderr, "========%s %s=========\n", command.c_str(),
+                      target.c_str());
+            } else {
+              fprintf(stderr, "========%s %s=========\n", command.c_str(),
+                      target.c_str());
             }
           }
           // TODO: Other states.
@@ -203,7 +204,8 @@ public:  // TODO: modify access
           if (clients[fd].state == STATE_SEND_GET_RES) {
             std::string tmp;
             if (clients[fd].getRes.isHeaderWritten) {
-              if (clients[fd].getRes.targetFile && getline (clients[fd].getRes.targetFile, tmp)) {
+              if (clients[fd].getRes.targetFile &&
+                  getline(clients[fd].getRes.targetFile, tmp)) {
                 handleWrite(fd, tmp);
               } else {
                 // End
@@ -217,17 +219,17 @@ public:  // TODO: modify access
               handleWrite(fd, clients[fd].getRes.Header());
               clients[fd].getRes.isHeaderWritten = true;
             }
-          } 
+          }
           // TODO: Other states.
-        }     
+        }
       }
     }
   }
 
   void closeFD(int fd) {
     fprintf(stderr, "closeFD: %d\n", fd);
-    FD_CLR(fd, &master_rfds);   //?
-    FD_CLR(fd, &master_wfds);   //?
+    FD_CLR(fd, &master_rfds);  //?
+    FD_CLR(fd, &master_wfds);  //?
     close(fd);
     clients[fd].reset();
   }
@@ -239,7 +241,7 @@ public:  // TODO: modify access
       fprintf(stderr, "handleRead: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleRead: fd:%d=========\n",fd);
+      fprintf(stderr, "========handleRead: fd:%d=========\n", fd);
       fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
@@ -255,7 +257,8 @@ public:  // TODO: modify access
       fprintf(stderr, "handleWrite: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",fd, buf[strlen(buf) - 1]);
+      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",
+              fd, buf[strlen(buf) - 1]);
       fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
@@ -266,8 +269,9 @@ public:  // TODO: modify access
 class Client {
  public:
   int server_fd;
+  char buf[BUF_LEN];
 
-  void initClient(char *ip, int port_num) {
+  int initClient(char *ip, int port_num) {
     mkdir("client_dir", DIR_MODE);
 
     struct sockaddr_in addr_in;
@@ -282,6 +286,43 @@ class Client {
         close(server_fd);
       }
     }
+
+    return server_fd;
+  }
+
+  void addFriend(char *username, char *friend_name) {
+    sprintf(buf, "add %s %s", username, friend_name);
+    int n;
+    n = send(server_fd, buf, strlen(buf), 0);
+    recv(server_fd, buf, BUF_LEN, 0);
+  }
+
+  void deleteFriend(char *username, char *friend_name) {
+    sprintf(buf, "delete %s %s", username, friend_name);
+    int n;
+    n = send(server_fd, buf, strlen(buf), 0);
+    recv(server_fd, buf, BUF_LEN, 0);
+  }
+
+  void listFriend(char *username) {
+    sprintf(buf, "ls %s", username);
+    int n;
+    n = send(server_fd, buf, strlen(buf), 0);
+    recv(server_fd, buf, BUF_LEN, 0);
+  }
+
+  void history(char *username, char *friend_name) {
+    sprintf(buf, "history %s %s", username, friend_name);
+    int n;
+    n = send(server_fd, buf, strlen(buf), 0);
+    recv(server_fd, buf, BUF_LEN, 0);
+  }
+
+  void say(char *username, char *friend_name, char *something) {
+    sprintf(buf, "say %s %s %s", username, friend_name, something);
+    int n;
+    n = send(server_fd, buf, strlen(buf), 0);
+    recv(server_fd, buf, BUF_LEN, 0);
   }
 
   void interactive(int server_fd) {

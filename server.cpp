@@ -142,15 +142,6 @@ void *handling_client(void *arg) {
   client.connfd = connfd;
   int n;
 
-  // get username (required before commands)
-  char username[BUFLEN], buf[BUFLEN];
-  n = recv(connfd, username, BUFLEN, 0);
-  if (n <= 0) {
-    close(connfd);
-    pthread_exit((void *)1);
-  }
-  n = send(connfd, "0", 2, MSG_NOSIGNAL);
-
   char command[BUFLEN];
   while (1) {
     n = recv(connfd, command, BUFLEN, 0);
@@ -159,11 +150,11 @@ void *handling_client(void *arg) {
       pthread_exit((void *)1);
     }
     // TODO: process command
-    // (1) add $friend
-    // (2) delete $friend
-    // (3) ls
-    // (4) history $friend
-    // (5) say $friend $something
+    // (0) add $friend
+    // (1) delete $friend
+    // (2) ls
+    // (3) history $friend
+    // (4) say $friend $something
   }
 }
 
