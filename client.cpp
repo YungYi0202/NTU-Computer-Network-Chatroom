@@ -77,6 +77,7 @@ public:  // TODO: modify access
 
   static const int maxfd = MAXFD;
   int svrfd;
+  int browserfd;
   int sockfd;
   // browser browsers[maxfd];
   fd_set master_rfds, working_rfds, master_wfds, working_wfds;
@@ -127,7 +128,6 @@ public:  // TODO: modify access
     FD_ZERO(&master_wfds);
   
     FD_SET(sockfd, &master_rfds);
-    // browsers[sockfd].fd = sockfd;
     
     struct sockaddr_in client_addr;
     int clifd;
@@ -149,7 +149,6 @@ public:  // TODO: modify access
         fprintf(stderr, "=============================\n");
         fprintf(stderr, "Accept! client fd: %d\n", clifd);
         fprintf(stderr, "=============================\n");
-        state = STATE_WAIT_REQ_FROM_BROWSER;
       }
 
       for (int fd = 0; fd < maxfd; fd++) {
@@ -158,6 +157,7 @@ public:  // TODO: modify access
         if (FD_ISSET(fd, &working_rfds)) {
           /** Read **/
           if (state == STATE_WAIT_REQ_FROM_BROWSER && fd != svrfd) {
+            browserfd = fd;
             std::stringstream ss;
             do {
               handleRead(fd);
@@ -202,7 +202,7 @@ public:  // TODO: modify access
             handleWrite(fd, ACK);
             state = STATE_WAIT_GET_RES_FROM_SVR;
           }
-          else if (state == STATE_SEND_GET_RES_TO_BROWSER && fd != svrfd) {
+          else if (state == STATE_SEND_GET_RES_TO_BROWSER && fd == browserfd) {
             if (!headerSent) {
               handleWrite(fd, httpGetHeader(responseTypeToBrowser));
               headerSent = true;
