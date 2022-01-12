@@ -280,14 +280,14 @@ public:  // TODO: modify access
     int ret, writeLen;
     std::string tmp;
     if (str=="") {
-      _handleWrite(fd);
+      ret = _handleWrite(fd);
     } else {
       while (str.size()) {
         writeLen = (str.size() < BUF_LEN)? str.size(): BUF_LEN;
         tmp = str.substr(0, writeLen);
         str = str.substr(writeLen);
         sprintf(buf, "%s", tmp.c_str());
-        _handleWrite(fd);
+        ret = _handleWrite(fd);
       }
     }
     return ret;
