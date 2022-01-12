@@ -8,11 +8,19 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "sqlite3.h"
+
+namespace fs = std::filesystem;
+
+#define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
+#define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 #define ERR_EXIT(a) \
   do {              \
@@ -22,6 +30,8 @@
 
 #define BUFLEN 2048
 #define MAXFD 128
+
+const fs::path server_dir{"server_dir"};
 
 class Client {
  public:
@@ -166,8 +176,7 @@ class Client {
     // TODO: the history should not be longer than 512 characters
   }
   void addUser(char *username) {
-    sprintf(csql,
-            "SELECT * FROM USERNAME WHERE USERNAME='%s';", username);
+    sprintf(csql, "SELECT * FROM USERNAME WHERE USERNAME='%s';", username);
     int rc = sqlite3_exec(users, csql, addUserCallback, &connfd, &zErrMsg);
     errorHandling(rc, "query username");
     sprintf(csql,
@@ -186,7 +195,7 @@ void *handling_client(void *arg) {
   int n;
 
   char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
-      something[BUFLEN];
+      something[BUFLEN], filename[BUFLEN], buf[BUFLEN];
   while (1) {
     n = recv(connfd, command, BUFLEN, 0);
     if (n <= 0) {
@@ -204,6 +213,7 @@ void *handling_client(void *arg) {
         pch = strtok(NULL, " ");
         strcpy(friend_name, pch);
         client.addFriend(username, friend_name);
+        break;
       case 'd':
         char *pch;
         pch = strtok(command, " ");
@@ -212,12 +222,14 @@ void *handling_client(void *arg) {
         pch = strtok(NULL, " ");
         strcpy(friend_name, pch);
         client.deleteFriend(username, friend_name);
+        break;
       case 'l':
         char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
         client.listFriends(username);
+        break;
       case 'h':
         char *pch;
         pch = strtok(command, " ");
@@ -226,6 +238,7 @@ void *handling_client(void *arg) {
         pch = strtok(NULL, " ");
         strcpy(friend_name, pch);
         client.printHistory(username, friend_name);
+        break;
       case 's':
         char *pch;
         pch = strtok(command, " ");
@@ -236,12 +249,59 @@ void *handling_client(void *arg) {
         pch = strtok(NULL, " ");
         strcpy(something, pch);
         client.addHistory(username, friend_name, something);
+        break;
       case 'j':
         char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
         client.addUser(username);
+        break;
+      case 'p':
+        if (!fs::exists({server_dir / username})) {
+          std::ofstream{server_dir / username};
+        }
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(filename, pch);
+        send(connfd, "1", 1, MSG_NOSIGNAL);
+        n = recv(connfd, buf, BUFLEN, 0);
+        if (n <= 0) {
+          close(connfd);
+          pthread_exit((void *)1);
+        }
+        int filelen;
+        sscanf(buf, "%s %d", NULL, &filelen);
+        send(connfd, "1", 1, MSG_NOSIGNAL);
+        int file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_CREAT | O_RDWR, FILE_MODE);
+        while(filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
+          write(file_fd, buf, n);
+          filelen -= n;
+        }
+        close(file_fd);
+        if (n <= 0) {
+          close(connfd);
+          pthread_exit((void *)1);
+        }
+        break;
+      case 'g':
+        struct stat st;
+        stat(fs::path({server_dir / username / filename}).string().c_str(), &st);
+        sprintf(buf, "%s %d\n", filename, (int)st.st_size);
+        send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
+        n = recv(connfd, buf, BUFLEN, 0);
+        if (n <= 0) {
+          close(connfd);
+          pthread_exit((void *)1);
+        }
+        int file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_RDWR);
+        while((n = read(file_fd, buf, BUFLEN)) > 0) {
+          send(connfd, buf, n, MSG_NOSIGNAL);
+        }
+        break;
     }
   }
 }
@@ -271,6 +331,8 @@ void serve(int sockfd) {
 }
 
 static int initServer(unsigned short port) {
+  fs::create_directory(server_dir);
+
   struct sockaddr_in server_addr;
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) ERR_EXIT("socket");
@@ -294,9 +356,10 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "usage: ./server [port]\n");
     exit(1);
   }
-  // init create database;
-  // database.openDatabase();
-  // database.closeDatabase();
+
+  Client root;
+  root.openDatabase();
+  root.createDatabase();
 
   int sockfd = initServer((unsigned short)atoi(argv[1]));
   serve(sockfd);
