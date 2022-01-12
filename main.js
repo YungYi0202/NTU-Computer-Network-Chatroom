@@ -15,6 +15,7 @@ submitBtn.addEventListener('click', async _ => {
         const response = await fetch(myRequest);
         const resJson = await response.json();
         console.log('Completed!', response);
+        console.log(response.ok);
         console.log(resJson);
         console.log(resJson.Friend[0])
     } catch(err) {

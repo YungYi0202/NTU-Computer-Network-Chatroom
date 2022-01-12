@@ -5,13 +5,17 @@
         <link rel="stylesheet" href="index2.css">
     </head>
     <body>
-        <div class="container clearfix">
+        <div id="login-window">
+          <input name="username" type="text">
+          <button id="login-btn">Login</button>
+        </div>
+        <div class="container clearfix" id="main-window">
             <div class="people-list" id="people-list">
               <div class="search">
                 <input type="text" placeholder="search" />
                 <!--i class="fa fa-plus"></i-->
               </div>
-              <ul class="list">
+              <ul class="list" id="friend-list">
                 <li class="clearfix">
                     <div class="name"><i class="fa fa-circle online"></i>Vincent Porter</div>
                 </li>
@@ -84,4 +88,5 @@
             </div> <!-- end chat --> 
         </div> <!-- end container -->
     </body>
+    <script type="module" src="main2.js"></script>
 </html>
