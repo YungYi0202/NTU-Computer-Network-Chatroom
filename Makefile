@@ -1,6 +1,6 @@
 .PHONY: all clean run
 CC=gcc
-CFLAGS=-std=c++11 -O2
+CFLAGS=-std=c++17 -O2
 LDFLAGS=-lm
 TARGET=sqlite server client 
 

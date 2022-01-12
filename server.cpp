@@ -165,7 +165,7 @@ class Client {
   }
   static int addUserCallback(void *connfd, int argc, char **argv,
                              char **azColName) {
-    char buf[BUFLEN], csql[BUFLEN];
+    char buf[BUFLEN];
     if (argc >= 1)
       sprintf(buf, "0");
     else {
@@ -183,7 +183,7 @@ class Client {
             "INSERT INTO USERNAME "
             "VALUES ('%s'); ",
             username);
-    int rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
+    rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "add username");
   }
 };
@@ -204,9 +204,10 @@ void *handling_client(void *arg) {
     }
     // TODO: process command
 
+    char *pch;
+    int file_fd;
     switch (command[0]) {
       case 'a':
-        char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
@@ -215,7 +216,6 @@ void *handling_client(void *arg) {
         client.addFriend(username, friend_name);
         break;
       case 'd':
-        char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
@@ -224,14 +224,12 @@ void *handling_client(void *arg) {
         client.deleteFriend(username, friend_name);
         break;
       case 'l':
-        char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
         client.listFriends(username);
         break;
       case 'h':
-        char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
@@ -240,7 +238,6 @@ void *handling_client(void *arg) {
         client.printHistory(username, friend_name);
         break;
       case 's':
-        char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
@@ -251,7 +248,6 @@ void *handling_client(void *arg) {
         client.addHistory(username, friend_name, something);
         break;
       case 'j':
-        char *pch;
         pch = strtok(command, " ");
         pch = strtok(NULL, " ");
         strcpy(username, pch);
@@ -274,9 +270,9 @@ void *handling_client(void *arg) {
           pthread_exit((void *)1);
         }
         int filelen;
-        sscanf(buf, "%s %d", NULL, &filelen);
+        sscanf(buf, "%*s %d", &filelen);
         send(connfd, "1", 1, MSG_NOSIGNAL);
-        int file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_CREAT | O_RDWR, FILE_MODE);
+        file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_CREAT | O_RDWR, FILE_MODE);
         while(filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
           write(file_fd, buf, n);
           filelen -= n;
@@ -297,7 +293,7 @@ void *handling_client(void *arg) {
           close(connfd);
           pthread_exit((void *)1);
         }
-        int file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_RDWR);
+        file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_RDWR);
         while((n = read(file_fd, buf, BUFLEN)) > 0) {
           send(connfd, buf, n, MSG_NOSIGNAL);
         }
