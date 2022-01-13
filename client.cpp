@@ -14,10 +14,10 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <string>
-#include <sstream>
 #include <fstream>
 #include <vector>
+#include <sstream>
+#include <string>
 
 #define ERR_EXIT(a) \
   do {              \
@@ -27,7 +27,7 @@
 #define BUF_LEN 2048
 #define MAXFD 1024
 #define SVR_PORT 8080
-#define CRLF "\r\n" 
+#define CRLF "\r\n"
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
@@ -153,7 +153,7 @@ public:  // TODO: modify access
 
       for (int fd = 0; fd < maxfd; fd++) {
         if (fd == sockfd) continue;
-        
+
         if (FD_ISSET(fd, &working_rfds)) {
           /** Read **/
           if (state == STATE_WAIT_REQ_FROM_BROWSER && fd != svrfd) {
@@ -253,8 +253,8 @@ public:  // TODO: modify access
 
   void closeFD(int fd) {
     fprintf(stderr, "closeFD: %d\n", fd);
-    FD_CLR(fd, &master_rfds);   //?
-    FD_CLR(fd, &master_wfds);   //?
+    FD_CLR(fd, &master_rfds);  //?
+    FD_CLR(fd, &master_wfds);  //?
     close(fd);
     if (fd != svrfd) {
       responseLenFromSvr = 0;
@@ -269,7 +269,7 @@ public:  // TODO: modify access
       fprintf(stderr, "handleRead: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleRead: fd:%d=========\n",fd);
+      fprintf(stderr, "========handleRead: fd:%d=========\n", fd);
       fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }
@@ -301,7 +301,8 @@ public:  // TODO: modify access
       closeFD(fd);
       return ret;
     } else {
-      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",fd, buf[strlen(buf) - 1]);
+      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",
+              fd, buf[strlen(buf) - 1]);
       fprintf(stderr, "%s", buf);
       fprintf(stderr, "=============================\n");
     }

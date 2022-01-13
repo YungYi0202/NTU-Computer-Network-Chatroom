@@ -8,11 +8,19 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "sqlite3.h"
+
+namespace fs = std::filesystem;
+
+#define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
+#define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 #define ERR_EXIT(a) \
   do {              \
@@ -20,12 +28,15 @@
     exit(1);        \
   } while (0)
 
-#define BUFLEN 512
+#define BUFLEN 2048
 #define MAXFD 128
 
-class Database {
+const fs::path server_dir{"server_dir"};
+
+class Client {
  public:
-  sqlite3 *db;
+  int connfd;
+  sqlite3 *db, *users;
   char *zErrMsg = 0;
   char csql[BUFLEN];
   static int callback(void *NotUsed, int argc, char **argv, char **azColName) {
@@ -54,8 +65,19 @@ class Database {
     } else {
       fprintf(stderr, "Successfully open database\n");
     }
+
+    rc = sqlite3_open("username.db", &users);
+    if (rc) {
+      fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(users));
+      exit(0);
+    } else {
+      fprintf(stderr, "Successfully open database\n");
+    }
   }
-  void closeDatabase() { sqlite3_close(db); }
+  void closeDatabase() {
+    sqlite3_close(db);
+    sqlite3_close(users);
+  }
   void createDatabase() {
     sprintf(csql,
             "CREATE TABLE CHATROOM("
@@ -65,7 +87,15 @@ class Database {
             "PRIMARY KEY (USERNAME, FRIEND)"
             ");");
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
-    errorHandling(rc, "create table");
+    errorHandling(rc, "create database");
+
+    sprintf(csql,
+            "CREATE TABLE USERNAME("
+            "USERNAME VARCHAR(20) NOT NULL,"
+            "PRIMARY KEY (USERNAME)"
+            ");");
+    rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "create username table");
   }
   void addFriend(char *username, char *friend_name) {
     sprintf(csql,
@@ -81,9 +111,36 @@ class Database {
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "delete friend");
   }
+  static int listFriendCallback(void *connfd, int argc, char **argv,
+                                char **azColName) {
+    std::string buf;
+    buf += "[";
+    for (int i = 0; i < argc; i++) {
+      if (i == 0)
+        buf += "\"" + std::string(argv[i]) + "\"";
+      else
+        buf += ", \"" + std::string(argv[i]) + "\"";
+    }
+    buf += "]";
+    int len = buf.length();
+    int n = send(*(int *)connfd, std::to_string(buf.length()).c_str(),
+         std::to_string(buf.length()).length(), MSG_NOSIGNAL);
+    fprintf(stderr, "send %d bytes\n", n);
+    char unused[BUFLEN];
+    recv(*(int *)connfd, unused, 1, 0);
+    int i;
+    for(i = 0; i + BUFLEN <= len; i += BUFLEN) {
+      send(*(int *)connfd, buf.substr(i, BUFLEN).c_str(), BUFLEN, MSG_NOSIGNAL);
+    }
+    if(i < len) {
+      send(*(int *)connfd, buf.substr(i).c_str(), len - i + 1, MSG_NOSIGNAL);
+    }
+    return 0;
+  }
   void listFriends(char *username) {
+    fprintf(stderr, "list %s friends\n", username);
     sprintf(csql, "SELECT FRIEND FROM CHATROOM WHERE USERNAME='%s';", username);
-    int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
+    int rc = sqlite3_exec(db, csql, listFriendCallback, &connfd, &zErrMsg);
     errorHandling(rc, "list friends");
   }
   void addHistory(char *username, char *friend_name, char *history) {
@@ -101,36 +158,201 @@ class Database {
     rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "add history");
   }
+  static int printHistoryCallback(void *connfd, int argc, char **argv,
+                                  char **azColName) {
+    char buf[BUFLEN];
+    for (int i = 0; i < argc; i++) {
+      sprintf(buf + strlen(buf), "%s\n", argv[i] ? argv[i] : "NULL");
+    }
+    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    return 0;
+    // TODO: the history should not be longer than 512 characters
+  }
+  void printHistory(char *username, char *friend_name) {
+    sprintf(csql,
+            "SELECT HISTORY FROM CHATROOM WHERE USERNAME='%s' AND FRIEND='%s';",
+            username, friend_name);
+    int rc = sqlite3_exec(db, csql, printHistoryCallback, &connfd, &zErrMsg);
+    errorHandling(rc, "print history");
+  }
   void printDatabase() {
     sprintf(csql, "SELECT * FROM CHATROOM;");
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "print database");
   }
-} database;
+  static int addUserCallback(void *connfd, int argc, char **argv,
+                             char **azColName) {
+    char buf[BUFLEN];
+    if (argc >= 1)
+      sprintf(buf, "0");
+    else {
+      sprintf(buf, "1");
+    }
+    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    return 0;
+    // TODO: the history should not be longer than 512 characters
+  }
+  void addUser(char *username) {
+    sprintf(csql, "SELECT * FROM USERNAME WHERE USERNAME='%s';", username);
+    int rc = sqlite3_exec(users, csql, addUserCallback, &connfd, &zErrMsg);
+    errorHandling(rc, "query username");
+    sprintf(csql,
+            "INSERT INTO USERNAME "
+            "VALUES ('%s'); ",
+            username);
+    rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
+    errorHandling(rc, "add username");
+  }
+};
 
+void *handling_client(void *arg) {
+  int connfd = *(int *)arg;
+  Client client;
+  client.connfd = connfd;
+  client.openDatabase();
+  int n;
+
+  char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
+      something[BUFLEN], filename[BUFLEN], buf[BUFLEN];
+  while (1) {
+    n = recv(connfd, command, BUFLEN, 0);
+    fprintf(stderr, "server recv command: %s\n", command);
+    if (n <= 0) {
+      close(connfd);
+      pthread_exit((void *)1);
+    }
+    // TODO: process command
+
+    char *pch;
+    int file_fd;
+    switch (command[0]) {
+      case 'a':
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        client.addFriend(username, friend_name);
+        break;
+      case 'd':
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        client.deleteFriend(username, friend_name);
+        break;
+      case 'l':
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        client.listFriends(username);
+        break;
+      case 'h':
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        client.printHistory(username, friend_name);
+        break;
+      case 's':
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(friend_name, pch);
+        pch = strtok(NULL, " ");
+        strcpy(something, pch);
+        client.addHistory(username, friend_name, something);
+        break;
+      case 'j':
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        client.addUser(username);
+        break;
+      case 'p':
+        if (!fs::exists({server_dir / username})) {
+          std::ofstream{server_dir / username};
+        }
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(filename, pch);
+        send(connfd, "1", 2, MSG_NOSIGNAL);
+        n = recv(connfd, buf, BUFLEN, 0);
+        if (n <= 0) {
+          close(connfd);
+          pthread_exit((void *)1);
+        }
+        int filelen;
+        sscanf(buf, "%*s %d", &filelen);
+        send(connfd, "1", 2, MSG_NOSIGNAL);
+        file_fd =
+            open(fs::path({server_dir / username / filename}).string().c_str(),
+                 O_CREAT | O_RDWR, FILE_MODE);
+        while (filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
+          write(file_fd, buf, n);
+          filelen -= n;
+        }
+        close(file_fd);
+        if (n <= 0) {
+          close(connfd);
+          pthread_exit((void *)1);
+        }
+        break;
+      case 'g':
+        struct stat st;
+        stat(fs::path({server_dir / username / filename}).string().c_str(),
+             &st);
+        sprintf(buf, "%s %d\n", filename, (int)st.st_size);
+        send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
+        n = recv(connfd, buf, BUFLEN, 0);
+        if (n <= 0) {
+          close(connfd);
+          pthread_exit((void *)1);
+        }
+        file_fd =
+            open(fs::path({server_dir / username / filename}).string().c_str(),
+                 O_RDWR);
+        while ((n = read(file_fd, buf, BUFLEN)) > 0) {
+          send(connfd, buf, n, MSG_NOSIGNAL);
+        }
+        break;
+    }
+  }
+}
+
+#define MAX_CLIENT 128
+pthread_t ntid[MAX_CLIENT];
 void serve(int sockfd) {
   int maxfd = MAXFD;
-  fd_set master_rfds, working_rfds, master_wfds, working_wfds;
+  int ntid_cnt = 0;
+  fd_set master_rfds, working_rfds;
 
   FD_ZERO(&master_rfds);
-  FD_ZERO(&master_wfds);
   FD_SET(sockfd, &master_rfds);
 
   while (1) {
     working_rfds = master_rfds;
-    working_wfds = master_wfds;
-    if (select(maxfd, &working_rfds, &working_wfds, NULL, NULL) < 0) {
+    if (select(maxfd, &working_rfds, NULL, NULL, NULL) < 0) {
       fprintf(stderr, "select failed\n");
     }
 
     if (FD_ISSET(sockfd, &working_rfds)) {
       int connfd = accept(sockfd, NULL, NULL);
-      FD_SET(connfd, &master_rfds);
+      pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
     }
   }
+  // pthread_join(ntid[?], NULL);
 }
 
 static int initServer(unsigned short port) {
+  fs::create_directory(server_dir);
+
   struct sockaddr_in server_addr;
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) ERR_EXIT("socket");
@@ -155,9 +377,9 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  database.openDatabase();
-  database.createDatabase();
-  database.closeDatabase();
+  Client root;
+  root.openDatabase();
+  root.createDatabase();
 
   int sockfd = initServer((unsigned short)atoi(argv[1]));
   serve(sockfd);
