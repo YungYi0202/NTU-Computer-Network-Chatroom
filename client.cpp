@@ -26,7 +26,7 @@
   } while (0)
 #define BUF_LEN 2048
 #define MAXFD 1024
-#define SVR_PORT 8080
+#define SVR_PORT 8081
 #define CRLF "\r\n" 
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
@@ -197,6 +197,8 @@ public:  // TODO: modify access
           if (state == STATE_SEND_GET_REQ_TO_SVR && fd == svrfd) {
             handleWrite(fd, requestToSvr);
             state = STATE_WAIT_GET_LEN_FROM_SVR;
+            fprintf(stderr, "STATE_WAIT_GET_LEN_FROM_SVR");
+            fprintf(stderr, "%s\n", requestToSvr.c_str());
           }
           else if (state == STATE_SEND_GET_LEN_ACK_TO_SVR && fd == svrfd) {
             handleWrite(fd, ACK);
@@ -266,12 +268,12 @@ public:  // TODO: modify access
     bzero(buf, BUF_LEN);
     int ret = read(fd, buf, sizeof(buf));
     if (ret <= 0 && fd > 0) {
-      fprintf(stderr, "handleRead: fd:%d closeFD\n", fd);
+    //   fprintf(stderr, "handleRead: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleRead: fd:%d=========\n",fd);
-      fprintf(stderr, "%s", buf);
-      fprintf(stderr, "=============================\n");
+    //   fprintf(stderr, "========handleRead: fd:%d=========\n",fd);
+    //   fprintf(stderr, "%s", buf);
+    //   fprintf(stderr, "=============================\n");
     }
     return ret;
   }
@@ -297,13 +299,13 @@ public:  // TODO: modify access
     int writeLen = strlen(buf);
     int ret = write(fd, buf, writeLen);
     if (ret != writeLen && fd > 0) {
-      fprintf(stderr, "handleWrite: fd:%d closeFD\n", fd);
+    //   fprintf(stderr, "handleWrite: fd:%d closeFD\n", fd);
       closeFD(fd);
       return ret;
     } else {
-      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",fd, buf[strlen(buf) - 1]);
-      fprintf(stderr, "%s", buf);
-      fprintf(stderr, "=============================\n");
+    //   fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",fd, buf[strlen(buf) - 1]);
+    //   fprintf(stderr, "%s", buf);
+    //   fprintf(stderr, "=============================\n");
     }
     return ret;
   }
