@@ -1,7 +1,7 @@
 .PHONY: all clean run
 CC=gcc
 LDFLAGS=-lm
-TARGET=sqlite server client 
+TARGET=sqlite server client console 
 
 all: $(TARGET)
 
