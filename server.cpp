@@ -113,15 +113,32 @@ class Client {
   }
   static int listFriendCallback(void *connfd, int argc, char **argv,
                                 char **azColName) {
-    char buf[BUFLEN];
+    std::string buf;
+    buf += "[";
     for (int i = 0; i < argc; i++) {
-      sprintf(buf + strlen(buf), "(%d) %s ", i + 1, argv[i] ? argv[i] : "NULL");
+      if (i == 0)
+        buf += "\"" + std::string(argv[i]) + "\"";
+      else
+        buf += ", \"" + std::string(argv[i]) + "\"";
     }
-    sprintf(buf + strlen(buf), "\n");
-    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    buf += "]";
+    int len = buf.length();
+    int n = send(*(int *)connfd, std::to_string(buf.length()).c_str(),
+         std::to_string(buf.length()).length(), MSG_NOSIGNAL);
+    fprintf(stderr, "send %d bytes\n", n);
+    char unused[BUFLEN];
+    recv(*(int *)connfd, unused, 1, 0);
+    int i;
+    for(i = 0; i + BUFLEN <= len; i += BUFLEN) {
+      send(*(int *)connfd, buf.substr(i, BUFLEN).c_str(), BUFLEN, MSG_NOSIGNAL);
+    }
+    if(i < len) {
+      send(*(int *)connfd, buf.substr(i).c_str(), len - i + 1, MSG_NOSIGNAL);
+    }
     return 0;
   }
   void listFriends(char *username) {
+    fprintf(stderr, "list %s friends\n", username);
     sprintf(csql, "SELECT FRIEND FROM CHATROOM WHERE USERNAME='%s';", username);
     int rc = sqlite3_exec(db, csql, listFriendCallback, &connfd, &zErrMsg);
     errorHandling(rc, "list friends");
@@ -192,12 +209,14 @@ void *handling_client(void *arg) {
   int connfd = *(int *)arg;
   Client client;
   client.connfd = connfd;
+  client.openDatabase();
   int n;
 
   char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
       something[BUFLEN], filename[BUFLEN], buf[BUFLEN];
   while (1) {
     n = recv(connfd, command, BUFLEN, 0);
+    fprintf(stderr, "server recv command: %s\n", command);
     if (n <= 0) {
       close(connfd);
       pthread_exit((void *)1);
@@ -263,7 +282,7 @@ void *handling_client(void *arg) {
         strcpy(username, pch);
         pch = strtok(NULL, " ");
         strcpy(filename, pch);
-        send(connfd, "1", 1, MSG_NOSIGNAL);
+        send(connfd, "1", 2, MSG_NOSIGNAL);
         n = recv(connfd, buf, BUFLEN, 0);
         if (n <= 0) {
           close(connfd);
@@ -271,9 +290,11 @@ void *handling_client(void *arg) {
         }
         int filelen;
         sscanf(buf, "%*s %d", &filelen);
-        send(connfd, "1", 1, MSG_NOSIGNAL);
-        file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_CREAT | O_RDWR, FILE_MODE);
-        while(filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
+        send(connfd, "1", 2, MSG_NOSIGNAL);
+        file_fd =
+            open(fs::path({server_dir / username / filename}).string().c_str(),
+                 O_CREAT | O_RDWR, FILE_MODE);
+        while (filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
           write(file_fd, buf, n);
           filelen -= n;
         }
@@ -285,7 +306,8 @@ void *handling_client(void *arg) {
         break;
       case 'g':
         struct stat st;
-        stat(fs::path({server_dir / username / filename}).string().c_str(), &st);
+        stat(fs::path({server_dir / username / filename}).string().c_str(),
+             &st);
         sprintf(buf, "%s %d\n", filename, (int)st.st_size);
         send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
         n = recv(connfd, buf, BUFLEN, 0);
@@ -293,8 +315,10 @@ void *handling_client(void *arg) {
           close(connfd);
           pthread_exit((void *)1);
         }
-        file_fd = open(fs::path({server_dir / username / filename}).string().c_str(), O_RDWR);
-        while((n = read(file_fd, buf, BUFLEN)) > 0) {
+        file_fd =
+            open(fs::path({server_dir / username / filename}).string().c_str(),
+                 O_RDWR);
+        while ((n = read(file_fd, buf, BUFLEN)) > 0) {
           send(connfd, buf, n, MSG_NOSIGNAL);
         }
         break;

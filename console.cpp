@@ -17,6 +17,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <iostream>
+#include <sstream>
 
 #define ERR_EXIT(a) \
   do {              \
@@ -55,42 +57,56 @@ class Client {
     return server_fd;
   }
 
-  void addFriend(char *username, char *friend_name) {
+  void addFriend(const char *username, const char *friend_name) {
     sprintf(buf, "add %s %s", username, friend_name);
     int n;
     n = send(server_fd, buf, strlen(buf), 0);
   }
 
-  void deleteFriend(char *username, char *friend_name) {
+  void deleteFriend(const char *username, const char *friend_name) {
     sprintf(buf, "delete %s %s", username, friend_name);
     int n;
     n = send(server_fd, buf, strlen(buf), 0);
   }
 
-  void listFriend(char *username) {
+  void listFriend(const char *username) {
     sprintf(buf, "ls %s", username);
+    fprintf(stderr, "in function, command = %s\n", buf);
     int n;
     n = send(server_fd, buf, strlen(buf), 0);
     recv(server_fd, buf, BUF_LEN, 0);
+    int filelen;
+    sscanf(buf, "%d", &filelen);
+    fprintf(stderr, "list friend len = %d\n", filelen);
+    send(server_fd, "1", 2, 0);
+    while(filelen > 0 && (n = recv(server_fd, buf, BUF_LEN, 0)) > 0) {
+      printf("%s", buf);
+      filelen -= n;
+    }
   }
 
-  void history(char *username, char *friend_name) {
+  void history(const char *username, const char *friend_name) {
     sprintf(buf, "history %s %s", username, friend_name);
     int n;
     n = send(server_fd, buf, strlen(buf), 0);
     recv(server_fd, buf, BUF_LEN, 0);
   }
 
-  void say(char *username, char *friend_name, char *something) {
+  void say(const char *username, const char *friend_name, const char *something) {
     sprintf(buf, "say %s %s %s", username, friend_name, something);
     int n;
     n = send(server_fd, buf, strlen(buf), 0);
     recv(server_fd, buf, BUF_LEN, 0);
   }
 
-  void put(char *username, char* filename) {
+  void put(const char *username, const char *filename) {
     sprintf(buf, "put %s %s", username, filename);
-    
+    // incomplete
+  }
+
+  void get(const char *username, const char *filename) {
+    sprintf(buf, "get %s %s", username, filename);
+    // incomplete
   }
 
 } client;
@@ -113,4 +129,42 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < port_l; i++) port_num = port_num * 10 + port[i] - '0';
 
   client.initClient(ip, port_num);
+  std::string s, command, username, friend_name, something, filename;
+  while (getline(std::cin, s)) {
+    std::cerr << "recv command: " << s << std::endl;
+    std::stringstream ss(s);
+    ss >> command;
+    switch(command[0]) {
+      case 'a':
+        ss >> username >> friend_name;
+        client.addFriend(username.c_str(), friend_name.c_str());
+        break;
+      case 'd':
+        ss >> username >> friend_name;
+        client.deleteFriend(username.c_str(), friend_name.c_str());
+        break;
+      case 'l':
+        ss >> username;
+        std::cerr << "username: " << username << std::endl;
+        client.listFriend(username.c_str());
+        break;
+      case 'h':
+        ss >> username >> friend_name;
+        client.history(username.c_str(), friend_name.c_str());
+        break;
+      case 's':
+        ss >> username >> friend_name >> something;
+        client.say(username.c_str(), friend_name.c_str(), something.c_str());
+        break;
+      case 'p':
+        ss >> username >> filename;
+        client.put(username.c_str(), filename.c_str());
+        break;
+      case 'g':
+        ss >> username >> filename;
+        client.get(username.c_str(), filename.c_str());
+        break;
+    }
+    std::cout << "please input your command:" << std::endl;
+  }
 }
