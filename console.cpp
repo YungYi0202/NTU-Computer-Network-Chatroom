@@ -57,28 +57,13 @@ class Client {
     return server_fd;
   }
 
-  void addFriend(const char *username, const char *friend_name) {
-    sprintf(buf, "add %s %s", username, friend_name);
-    int n;
-    n = send(server_fd, buf, strlen(buf), 0);
-  }
-
-  void deleteFriend(const char *username, const char *friend_name) {
-    sprintf(buf, "delete %s %s", username, friend_name);
-    int n;
-    n = send(server_fd, buf, strlen(buf), 0);
-  }
-
   void listFriend(const char *username) {
-    sprintf(buf, "ls %s", username);
-    fprintf(stderr, "in function, command = %s\n", buf);
-    int n;
-    n = send(server_fd, buf, strlen(buf), 0);
     recv(server_fd, buf, BUF_LEN, 0);
     int filelen;
     sscanf(buf, "%d", &filelen);
     fprintf(stderr, "list friend len = %d\n", filelen);
     send(server_fd, "1", 2, 0);
+    int n;
     while(filelen > 0 && (n = recv(server_fd, buf, BUF_LEN, 0)) > 0) {
       printf("%s", buf);
       filelen -= n;
@@ -86,26 +71,14 @@ class Client {
   }
 
   void history(const char *username, const char *friend_name) {
-    sprintf(buf, "history %s %s", username, friend_name);
-    int n;
-    n = send(server_fd, buf, strlen(buf), 0);
-    recv(server_fd, buf, BUF_LEN, 0);
-  }
-
-  void say(const char *username, const char *friend_name, const char *something) {
-    sprintf(buf, "say %s %s %s", username, friend_name, something);
-    int n;
-    n = send(server_fd, buf, strlen(buf), 0);
     recv(server_fd, buf, BUF_LEN, 0);
   }
 
   void put(const char *username, const char *filename) {
-    sprintf(buf, "put %s %s", username, filename);
     // incomplete
   }
 
   void get(const char *username, const char *filename) {
-    sprintf(buf, "get %s %s", username, filename);
     // incomplete
   }
 
@@ -117,7 +90,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  char ip[32], port[32];
+  char ip[32], port[32], buf[BUF_LEN];
   char *pch;
   pch = strtok(argv[1], ":");
   strcpy(ip, pch);
@@ -131,18 +104,14 @@ int main(int argc, char *argv[]) {
   client.initClient(ip, port_num);
   std::string s, command, username, friend_name, something, filename;
   while (getline(std::cin, s)) {
+    fflush(stdin);
     std::cerr << "recv command: " << s << std::endl;
+    sprintf(buf, "%s", s.c_str());
+    send(client.server_fd, buf, strlen(buf), MSG_NOSIGNAL);
+
     std::stringstream ss(s);
     ss >> command;
     switch(command[0]) {
-      case 'a':
-        ss >> username >> friend_name;
-        client.addFriend(username.c_str(), friend_name.c_str());
-        break;
-      case 'd':
-        ss >> username >> friend_name;
-        client.deleteFriend(username.c_str(), friend_name.c_str());
-        break;
       case 'l':
         ss >> username;
         std::cerr << "username: " << username << std::endl;
@@ -151,10 +120,6 @@ int main(int argc, char *argv[]) {
       case 'h':
         ss >> username >> friend_name;
         client.history(username.c_str(), friend_name.c_str());
-        break;
-      case 's':
-        ss >> username >> friend_name >> something;
-        client.say(username.c_str(), friend_name.c_str(), something.c_str());
         break;
       case 'p':
         ss >> username >> filename;

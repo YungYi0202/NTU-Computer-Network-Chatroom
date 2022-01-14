@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -50,9 +51,11 @@ class Client {
   void errorHandling(int rc, const char *msg) {
     if (rc != SQLITE_OK) {
       fprintf(stderr, "SQL error: %s\n", zErrMsg);
+      fflush(stderr);
       sqlite3_free(zErrMsg);
     } else {
       fprintf(stderr, "Successfully %s.\n", msg);
+      fflush(stderr);
     }
   }
   void openDatabase() {
@@ -61,17 +64,21 @@ class Client {
     rc = sqlite3_open("chatroom.db", &db);
     if (rc) {
       fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+      fflush(stderr);
       exit(0);
     } else {
       fprintf(stderr, "Successfully open database\n");
+      fflush(stderr);
     }
 
     rc = sqlite3_open("username.db", &users);
     if (rc) {
       fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(users));
+      fflush(stderr);
       exit(0);
     } else {
       fprintf(stderr, "Successfully open database\n");
+      fflush(stderr);
     }
   }
   void closeDatabase() {
@@ -111,37 +118,63 @@ class Client {
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "delete friend");
   }
-  static int listFriendCallback(void *connfd, int argc, char **argv,
-                                char **azColName) {
-    std::string buf;
-    buf += "[";
-    for (int i = 0; i < argc; i++) {
-      if (i == 0)
-        buf += "\"" + std::string(argv[i]) + "\"";
-      else
-        buf += ", \"" + std::string(argv[i]) + "\"";
-    }
-    buf += "]";
-    int len = buf.length();
-    int n = send(*(int *)connfd, std::to_string(buf.length()).c_str(),
-         std::to_string(buf.length()).length(), MSG_NOSIGNAL);
-    fprintf(stderr, "send %d bytes\n", n);
-    char unused[BUFLEN];
-    recv(*(int *)connfd, unused, 1, 0);
-    int i;
-    for(i = 0; i + BUFLEN <= len; i += BUFLEN) {
-      send(*(int *)connfd, buf.substr(i, BUFLEN).c_str(), BUFLEN, MSG_NOSIGNAL);
-    }
-    if(i < len) {
-      send(*(int *)connfd, buf.substr(i).c_str(), len - i + 1, MSG_NOSIGNAL);
-    }
-    return 0;
-  }
   void listFriends(char *username) {
+    sqlite3_stmt *stmt;
     fprintf(stderr, "list %s friends\n", username);
+    fflush(stderr);
     sprintf(csql, "SELECT FRIEND FROM CHATROOM WHERE USERNAME='%s';", username);
-    int rc = sqlite3_exec(db, csql, listFriendCallback, &connfd, &zErrMsg);
-    errorHandling(rc, "list friends");
+    int rc = sqlite3_prepare_v2(db, csql, -1, &stmt,
+                                NULL);  // -1: read to first null byte
+    if (rc != SQLITE_OK) {
+      fprintf(stderr, "Can't list friends: %s\n", sqlite3_errmsg(db));
+      fflush(stderr);
+      return;
+    }
+    sqlite3_bind_int(stmt, 1, 1);
+
+    char friends[MAXFD][32];
+    int idx = 0, filelen = 0;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+      const unsigned char* content = sqlite3_column_text(stmt, 0);
+      fprintf(stderr, "%s", content);
+      fflush(stderr);
+      sprintf(friends[idx], "%s", content); 
+      filelen += strlen(friends[idx]);
+      fprintf(stderr, "%d\n", filelen);
+      fflush(stderr);
+      idx++;
+    }
+
+    char buf[BUFLEN];
+    sprintf(buf, "%d", filelen + 2*(idx) + 2*(idx - 1) + 2);
+    send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
+    recv(connfd, buf, BUFLEN, 0);
+
+    sprintf(buf, "[");
+    int first = 1;
+    for (int i = 0; i < idx; i++) {
+      if (strlen(buf) + strlen(friends[i]) + 2 >= BUFLEN) {
+        send(connfd, buf, BUFLEN, MSG_NOSIGNAL);
+        buf[0] = 0;
+      }
+      if (first)
+        first = 0;
+      else
+        sprintf(buf + strlen(buf), ", ");
+      sprintf(buf + strlen(buf), "\"%s\"", friends[i]);
+    }
+
+    if (strlen(buf) + 1 >= BUFLEN) {
+      send(connfd, buf, BUFLEN, MSG_NOSIGNAL);
+      buf[0] = 0;
+    }
+    sprintf(buf + strlen(buf), "]");
+    send(connfd, buf, BUFLEN, MSG_NOSIGNAL);
+
+    if (rc != SQLITE_DONE) {
+      fprintf(stderr, "error: %s\n", sqlite3_errmsg(db));
+    }
+    sqlite3_finalize(stmt);
   }
   void addHistory(char *username, char *friend_name, char *history) {
     sprintf(csql,
@@ -205,7 +238,7 @@ class Client {
   }
 };
 
-void *handling_client(void *arg) {
+void handling_client(void *arg) {
   int connfd = *(int *)arg;
   Client client;
   client.connfd = connfd;
@@ -215,8 +248,10 @@ void *handling_client(void *arg) {
   char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
       something[BUFLEN], filename[BUFLEN], buf[BUFLEN];
   while (1) {
+    bzero(command, BUFLEN);
     n = recv(connfd, command, BUFLEN, 0);
-    fprintf(stderr, "server recv command: %s\n", command);
+    fprintf(stderr, "server recv %s, recv %d bytes, last character = %d\n", command, n, command[n]);
+    fflush(stderr);
     if (n <= 0) {
       close(connfd);
       pthread_exit((void *)1);
@@ -340,11 +375,13 @@ void serve(int sockfd) {
     working_rfds = master_rfds;
     if (select(maxfd, &working_rfds, NULL, NULL, NULL) < 0) {
       fprintf(stderr, "select failed\n");
+      fflush(stderr);
     }
 
     if (FD_ISSET(sockfd, &working_rfds)) {
       int connfd = accept(sockfd, NULL, NULL);
-      pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
+      //pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
+      handling_client(&(connfd));
     }
   }
   // pthread_join(ntid[?], NULL);
