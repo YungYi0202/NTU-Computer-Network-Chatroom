@@ -34,6 +34,8 @@ loginBtn.addEventListener('click', async _ => {
 
 /** End Login **/
 const historyContainer = document.getElementById('chat-history-container');
+const chatWith = document.getElementById('chat-with');
+const chatNum = document.getElementById('chat-num-messages');
 
 function createFriendListItem(friendname) {
     const item = document.createElement('li');
@@ -59,14 +61,8 @@ function createFriendListItem(friendname) {
     item.appendChild(deleteBtn);
     div.addEventListener('click', async _ => {
         try {   
-            var myRequest = new Request('?history=' + friendname, getInit);
-            const response = await fetch(myRequest);
-            const resJson = await response.json();
             curFriend = friendname;
-            if (response.ok) {
-                console.log('curFriend:' + curFriend);
-                refreshHistory(resJson);
-            }
+            await refreshHistory(friendname);
         } catch(err) {
             console.error(`Error: ${err}`);
         };
@@ -178,7 +174,6 @@ addFriendBtn.addEventListener('click', async _ => {
 });
 
 function createChatMsg(name, content, outcoming) {
-    console.log(outcoming);
     const li = document.createElement('li');
     if (outcoming) {
         li.classList.add('clearfix');
@@ -205,10 +200,30 @@ function createChatMsg(name, content, outcoming) {
     return li;
 }
 
-function refreshHistory(histories) {
+async function refreshHistory(friendname) {
+    var myRequest = new Request('?history=' + friendname, getInit);
+    const response = await fetch(myRequest);
+    const resJson = await response.json();
+    if (response.ok) {
+        _refreshHistory(resJson);
+    }
+}
+
+function _refreshHistory(histories) {
     historyContainer.innerHTML = '';
     for (const history of histories) {
         const chatMsg = createChatMsg(history.From, history.Content, (history.From == curFriend));
         historyContainer.appendChild(chatMsg);
     }
+    chatWith.innerHTML = `Chat with ${curFriend}`;
+    chatNum.innerHTML = `already ${histories.length} messages`;
 }
+
+const refreshHistoryBtn = document.getElementById('refresh-history-btn');
+refreshHistoryBtn.addEventListener('click', async _ => {
+    try {   
+        await refreshHistory(curFriend);
+    } catch(err) {
+        console.error(`Error: ${err}`);
+    }
+  });
