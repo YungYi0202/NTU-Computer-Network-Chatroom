@@ -27,7 +27,11 @@
 #define BUF_LEN 2048
 #define MAXFD 1024
 #define SVR_PORT 8081
-#define CRLF "\r\n" 
+#define CRLF "\r\n"
+#define CONTENT_LEN "Content-Length: "
+#define POST_RES_SUCCESS "HTTP/1.1 200 OK\r\n\r\n"
+#define POST_RES_ERROR "HTTP/1.1 404 Not Found\r\n\r\n"
+
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
@@ -40,7 +44,17 @@ enum {
   STATE_SEND_GET_LEN_ACK_TO_SVR, 
   STATE_WAIT_GET_LEN_FROM_SVR, 
   STATE_WAIT_GET_RES_FROM_SVR, 
-  STATE_SEND_GET_RES_TO_BROWSER
+  STATE_SEND_GET_RES_TO_BROWSER,
+  
+  STATE_SEND_PUT_REQ_TO_SVR, 
+  STATE_WAIT_PUT_ACK_FROM_SVR,
+  STATE_SEND_PUT_LEN_TO_SVR,
+  STATE_WAIT_PUT_LEN_ACK_FROM_SVR, 
+  STATE_SEND_PUT_CONTENT_TO_SVR,
+  STATE_SEND_PUT_RESPONSE_TO_BROWSER,
+
+  STATE_SEND_OTHER_POST_REQ_TO_SVR,
+  STATE_SEND_OTHER_POST_RES_TO_BROWSER
 };
 
 std::string contentType(std::string target) {
@@ -71,6 +85,7 @@ public:  // TODO: modify access
   std::string username = "default";
   // bool hasUsername = false;
   std::string requestToSvr;
+  std::string fileContentPutToSvr;
   int responseLenFromSvr = 0;
   std::string responseTypeToBrowser;
   bool headerSent = false;
@@ -104,8 +119,6 @@ public:  // TODO: modify access
       }
       
     }
-
-    
     /* To talk with browsers. */
     int one = 1;
     struct sockaddr_in svr_addr;
@@ -181,12 +194,60 @@ public:  // TODO: modify access
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
-              // fprintf(stderr, "STATE_SEND_GET_REQ_TO_SVR\n");
               FD_SET(fd, &master_wfds);
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
-              // TODO
-              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+                std::string tmp = ss.str();
+                // int contentLen = 0;
+                int pos;
+                /* Read Header*/
+                while((pos = tmp.find('\n')) != std::string::npos) {
+                    std::string line = tmp.substr(0, pos);
+                    tmp = tmp.substr(pos + 1);
+                    if (line == "\r") break;
+                }
+                /* Read Content */
+                if (tmp.size() > 0 ) {
+                    if ((pos = tmp.find(CRLF)) != std::string::npos) {
+                        /* put request */
+                        std::string friendnamefilename = tmp.substr(0, pos);
+                        fileContentPutToSvr = tmp.substr(pos + strlen(CRLF));
+                        
+                        pos = friendnamefilename.find("=");
+                        std::string friendname = friendnamefilename.substr(0, pos);
+                        std::string filename = friendnamefilename.substr(pos+1);
+
+                        requestToSvr = "put " + friendname + " " + filename;
+                        // contentLen -= pos + strlen(CRLF);
+                        state = STATE_SEND_PUT_REQ_TO_SVR;
+                    } else {
+                        /* other post request */
+                        fprintf(stderr, "%s", tmp.c_str());
+                        pos = tmp.find("=");
+                        std::string cmd = tmp.substr(0, pos);
+                        tmp = tmp.substr(pos + 1);
+                        if (cmd == "say") {
+                            pos = tmp.find("=");
+                            std::string friendname = tmp.substr(0, pos);
+                            std::string content = tmp.substr(pos + 1);
+                            requestToSvr = "say " + username + " " + friendname + " " + content;
+                        } else if (cmd == "add") {
+                            // TODO
+                        } else if (cmd == "delete") {
+                            // TODO
+                        } else {
+                            fprintf(stderr, "Wrong POST content which starts with cmd:%s\n", cmd.c_str());
+                            handleWrite(fd, POST_RES_ERROR);
+                            closeFD(fd);
+                            continue;
+                        }
+                        state = STATE_SEND_OTHER_POST_REQ_TO_SVR;
+                    }  
+                } else {
+                    fprintf(stderr, "The POST content is empty.\n");
+                    handleWrite(fd, POST_RES_ERROR);
+                    closeFD(fd);
+                }
             }
             else {
               // TODO
@@ -203,39 +264,79 @@ public:  // TODO: modify access
           else if (state == STATE_WAIT_GET_RES_FROM_SVR && fd == svrfd) {
             handleRead(fd);
             state = STATE_SEND_GET_RES_TO_BROWSER;
+          } else if (state == STATE_WAIT_PUT_ACK_FROM_SVR && fd == svrfd) {
+            handleRead(fd);
+            if (std::string(buf) != ACK) {
+                fprintf(stderr, "Should rcv ACK from server, but rcv %s\n", buf);
+            }
+            state = STATE_SEND_PUT_LEN_TO_SVR;
+          } else if (state == STATE_WAIT_PUT_LEN_ACK_FROM_SVR && fd == svrfd) {
+            handleRead(fd);
+            if (std::string(buf) != ACK) {
+                fprintf(stderr, "Should rcv ACK from server, but rcv %s\n", buf);
+            }
+            state = STATE_SEND_PUT_CONTENT_TO_SVR;
           }
           // TODO: Other read states.
         } else if (FD_ISSET(fd, &working_wfds)) {
           /** Write **/
-          if (state == STATE_SEND_GET_REQ_TO_SVR && fd == svrfd) {
-            handleWrite(svrfd, requestToSvr);
-            state = STATE_WAIT_GET_LEN_FROM_SVR;
-            // fprintf(stderr, "STATE_WAIT_GET_LEN_FROM_SVR");
-            // fprintf(stderr, "%s\n", requestToSvr.c_str());
-          }
-          else if (state == STATE_SEND_GET_LEN_ACK_TO_SVR && fd == svrfd) {
-            handleWrite(svrfd, ACK);
-            state = STATE_WAIT_GET_RES_FROM_SVR;
-          }
-          else if (state == STATE_SEND_GET_RES_TO_BROWSER && fd == browserfd) { 
-          //if (state == STATE_SEND_GET_RES_TO_BROWSER && fd == browserfd) {
-            if (!headerSent) {
-              handleWrite(fd, httpGetHeader(responseTypeToBrowser));
-              headerSent = true;
-            } else {
-              int ret = handleWrite(fd);
-              responseLenFromSvr -= ret;
-              if (responseLenFromSvr <= 0) {
-                handleWrite(fd, CRLF);
-                closeFD(fd);
-                state = STATE_WAIT_REQ_FROM_BROWSER;
-              } else {
-                state = STATE_WAIT_GET_RES_FROM_SVR;
-              }
+            if (fd == svrfd) {
+                if (state == STATE_SEND_GET_REQ_TO_SVR) {
+                    handleWrite(svrfd, requestToSvr);
+                    state = STATE_WAIT_GET_LEN_FROM_SVR;
+                } 
+                else if (state == STATE_SEND_GET_LEN_ACK_TO_SVR) {
+                    handleWrite(svrfd, ACK);
+                    state = STATE_WAIT_GET_RES_FROM_SVR;
+                }  
+                else if (state == STATE_SEND_PUT_REQ_TO_SVR) {                 
+                    handleWrite(svrfd, requestToSvr);
+                    state = STATE_WAIT_PUT_ACK_FROM_SVR;
+                }
+                else if (state == STATE_SEND_PUT_LEN_TO_SVR) {
+                    char lenStr[10];
+                    sprintf(lenStr, "%lu", fileContentPutToSvr.size());                  
+                    handleWrite(svrfd, std::string(lenStr));
+                    state = STATE_WAIT_PUT_LEN_ACK_FROM_SVR;
+                } 
+                else if (state == STATE_SEND_PUT_CONTENT_TO_SVR) {
+                    handleWrite(svrfd, fileContentPutToSvr);
+                    state = STATE_SEND_PUT_RESPONSE_TO_BROWSER;
+                } 
+                else if (state == STATE_SEND_OTHER_POST_REQ_TO_SVR) {
+                    handleWrite(svrfd, requestToSvr);
+                    state = STATE_SEND_OTHER_POST_RES_TO_BROWSER;
+                }
+            } 
+            else if (fd == browserfd) {
+                if (state == STATE_SEND_GET_RES_TO_BROWSER) {
+                    if (!headerSent) {
+                    handleWrite(fd, httpGetHeader(responseTypeToBrowser));
+                    headerSent = true;
+                    } else {
+                        int ret = handleWrite(fd);
+                        responseLenFromSvr -= ret;
+                        if (responseLenFromSvr <= 0) {
+                            handleWrite(fd, CRLF);
+                            closeFD(fd);
+                            state = STATE_WAIT_REQ_FROM_BROWSER;
+                        } else {
+                            state = STATE_WAIT_GET_RES_FROM_SVR;
+                        }
+                    }
+                }
+                else if (state == STATE_SEND_PUT_RESPONSE_TO_BROWSER) {
+                    // TODO: return fail status.
+                    handleWrite(fd, POST_RES_SUCCESS);
+                    closeFD(fd);
+                    state = STATE_WAIT_REQ_FROM_BROWSER;
+                } else if (state == STATE_SEND_OTHER_POST_RES_TO_BROWSER) {
+                    handleWrite(fd, POST_RES_SUCCESS);
+                    closeFD(fd);
+                    state = STATE_WAIT_REQ_FROM_BROWSER;
+                }
+                // TODO: Other write states to browser
             }
-            
-          } 
-          // TODO: Other write states.
         }     
       }
     }
@@ -243,18 +344,18 @@ public:  // TODO: modify access
 
   void handleGetReqFromBrowser(std::string target) {
     if (target.size() > 2 && target[1] == '?') {
-      target = target.substr(2);
+      target = target.substr(2); //rm "/?".
       std::size_t eqPos=target.find('=');
       if (eqPos == std::string::npos || eqPos == target.size() - 1) {
         ERR_EXIT("GET TARGET WRONG FORMAT: no \"=\" or no string after \"=\"");
       } else {
-        std::string targetFront = target.substr(0, eqPos);
-        std::string targetBack = target.substr(eqPos+1);
-        if (targetFront == "login") {
-          username = targetBack;
+        std::string cmd = target.substr(0, eqPos);
+        std::string name = target.substr(eqPos+1);
+        if (cmd == "login") {
+          username = name;
           requestToSvr = "ls " + username;
-        } else if (targetFront == "history") {
-          requestToSvr = "history " + username + " " + targetBack;
+        } else if (cmd == "history") {
+          requestToSvr = "history " + username + " " + name; // name is friendname.
         } else {
           ERR_EXIT("GET TARGET WRONG FORMAT: <command>=<content>, command is wrong.");
         }

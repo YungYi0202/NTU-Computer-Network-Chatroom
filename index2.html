@@ -83,7 +83,16 @@
                 <input id="message-input" placeholder ="Type your message" rows="3"/>
                 <!--i class="fa fa-file-o"></i> &nbsp;&nbsp;&nbsp;
                 <i class="fa fa-file-image-o"></i-->    
-                <button id="message-send-btn">Send</button>
+                <!--form action="http://localhost:8081" method="post" enctype="multipart/form-data">
+                    <p><input type="file" name="file1">
+                    <p><button type="submit">Submit</button>
+                </form-->
+                <label>
+                  <input id="file-input" style="display:none;" type="file">
+                  Upload File
+                </label>
+                <!--button id="file-send-btn">Send File</button-->
+                <button id="message-send-btn">Send Text</button>
               </div> <!-- end chat-message -->  
             </div> <!-- end chat --> 
         </div> <!-- end container -->

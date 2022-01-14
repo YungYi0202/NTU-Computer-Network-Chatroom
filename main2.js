@@ -91,10 +91,28 @@ messageSendBtn.addEventListener('click', async _ => {
 });
 
 async function sendMessage() {
-    var msg = `msg=${curFriend}=${messageInput.value}`;
+    var msg = `say=${curFriend}=${messageInput.value}`;
+    post(msg, 'text/plain');
+}
+
+async function post(msg, type) {
     var xhr = new XMLHttpRequest();
     xhr.open("POST", location.href, true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Content-Type', type);
     xhr.send(msg);
 }
+
+const fileInput = document.getElementById('file-input');
+fileInput.addEventListener('change', async (event) => {
+    const file = event.target.files[0];  
+    const filename = file.name;
+    const type = file.type;
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        var msg = `${curFriend}=${filename}\r\n${event.target.result}`;
+        post(msg, type);
+    };
+    reader.readAsText(file);
+    fileInput.value='';
+  });
 
