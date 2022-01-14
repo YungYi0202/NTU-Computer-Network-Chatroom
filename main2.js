@@ -23,7 +23,7 @@ loginBtn.addEventListener('click', async _ => {
         if (response.ok) {
             mainWindow.style.display = 'block';
             loginWindow.style.display = 'none';
-            loadUserFriends(resJson.Friend);
+            loadUserFriends(resJson);
         } else {
             usernameInput.value = "";
         }
@@ -33,6 +33,7 @@ loginBtn.addEventListener('click', async _ => {
   });
 
 /** End Login **/
+const historyContainer = document.getElementById('chat-history-container');
 
 function createFriendListItem(friendname) {
     const item = document.createElement('li');
@@ -61,11 +62,15 @@ function createFriendListItem(friendname) {
             var myRequest = new Request('?history=' + friendname, getInit);
             const response = await fetch(myRequest);
             const resJson = await response.json();
-            console.log('Completed!', response);
+            curFriend = friendname;
+            if (response.ok) {
+                console.log('curFriend:' + curFriend);
+                refreshHistory(resJson);
+            }
         } catch(err) {
             console.error(`Error: ${err}`);
-        }
-        });
+        };
+    });
     return item;
 }
 const friendsSet = new Set();
@@ -172,3 +177,38 @@ addFriendBtn.addEventListener('click', async _ => {
     }
 });
 
+function createChatMsg(name, content, outcoming) {
+    console.log(outcoming);
+    const li = document.createElement('li');
+    if (outcoming) {
+        li.classList.add('clearfix');
+    }
+    const div1 = document.createElement('div');
+    div1.classList.add('message-data');
+    if (outcoming) {
+        div1.classList.add('align-right');
+    }
+    div1.innerHTML = `<span class="message-data-name">${name}</span>`;
+    const div2 = document.createElement('div');
+    if (outcoming) {
+        div2.setAttribute('class','message other-message float-right');
+    } else {
+        div2.setAttribute('class','message my-message');
+    }
+    if (typeof(content) === 'object') {
+        div2.innerHTML = `<a href="${content.File}" download>${content.File}</a>`;
+    } {
+        div2.innerHTML = content
+    }
+    li.appendChild(div1);
+    li.appendChild(div2);
+    return li;
+}
+
+function refreshHistory(histories) {
+    historyContainer.innerHTML = '';
+    for (const history of histories) {
+        const chatMsg = createChatMsg(history.From, history.Content, (history.From == curFriend));
+        historyContainer.appendChild(chatMsg);
+    }
+}

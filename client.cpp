@@ -51,7 +51,7 @@ enum {
   STATE_SEND_PUT_LEN_TO_SVR,
   STATE_WAIT_PUT_LEN_ACK_FROM_SVR, 
   STATE_SEND_PUT_CONTENT_TO_SVR,
-  STATE_SEND_PUT_RESPONSE_TO_BROWSER,
+  STATE_SEND_PUT_RES_TO_BROWSER,
 
   STATE_SEND_OTHER_POST_REQ_TO_SVR,
   STATE_SEND_OTHER_POST_RES_TO_BROWSER
@@ -186,7 +186,8 @@ public:  // TODO: modify access
               ss << req;
               fprintf(stderr, "strlen(buf): %lu\n",strlen(buf));
             } while (strlen(buf) == BUF_LEN && buf[BUF_LEN-1] != '\n');
-            
+            FD_SET(fd, &master_wfds);
+
             /* To browser */
             std::string command, target;
             ss >> command >> target;
@@ -194,7 +195,6 @@ public:  // TODO: modify access
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
-              FD_SET(fd, &master_wfds);
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
                 std::string tmp = ss.str();
@@ -253,11 +253,11 @@ public:  // TODO: modify access
                 }
             }
             else {
-              // TODO
-              fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
+              fprintf(stderr, "Not GET nor POST\n");
+              handleWrite(fd, POST_RES_ERROR);
+              closeFD(fd);
             }
-            
-          }
+          } // end state == STATE_WAIT_REQ_FROM_BROWSER
           else if (state == STATE_WAIT_GET_LEN_FROM_SVR && fd == svrfd) {
             handleRead(fd);
             responseLenFromSvr = atoi(buf);
@@ -304,7 +304,7 @@ public:  // TODO: modify access
                 } 
                 else if (state == STATE_SEND_PUT_CONTENT_TO_SVR) {
                     handleWrite(svrfd, fileContentPutToSvr);
-                    state = STATE_SEND_PUT_RESPONSE_TO_BROWSER;
+                    state = STATE_SEND_PUT_RES_TO_BROWSER;
                 } 
                 else if (state == STATE_SEND_OTHER_POST_REQ_TO_SVR) {
                     handleWrite(svrfd, requestToSvr);
@@ -328,7 +328,7 @@ public:  // TODO: modify access
                         }
                     }
                 }
-                else if (state == STATE_SEND_PUT_RESPONSE_TO_BROWSER) {
+                else if (state == STATE_SEND_PUT_RES_TO_BROWSER) {
                     // TODO: return fail status.
                     handleWrite(fd, POST_RES_SUCCESS);
                     closeFD(fd);
