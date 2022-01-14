@@ -132,7 +132,7 @@ ul {
  .chat .chat-message {
 	 padding: 30px;
 }
- .chat .chat-message textarea {
+ .chat .chat-message input {
 	 width: 100%;
 	 border: none;
 	 padding: 10px 20px;

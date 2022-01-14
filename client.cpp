@@ -67,7 +67,7 @@ std::string httpGetHeader(std::string contentType, std::string statusCode = "200
 
 class Client {
 public:  // TODO: modify access
-  int state;
+  int state = STATE_WAIT_REQ_FROM_BROWSER;
   std::string username = "default";
   // bool hasUsername = false;
   std::string requestToSvr;
@@ -98,9 +98,14 @@ public:  // TODO: modify access
       if (x != 0) {
         close(svrfd);
         fprintf(stderr, "No corresponding server.cpp.\n");
+      } else {
+        fprintf(stderr, "Server fd:%d.\n", svrfd);
+
       }
+      
     }
 
+    
     /* To talk with browsers. */
     int one = 1;
     struct sockaddr_in svr_addr;
@@ -128,6 +133,8 @@ public:  // TODO: modify access
     FD_ZERO(&master_wfds);
   
     FD_SET(sockfd, &master_rfds);
+    FD_SET(svrfd, &master_wfds);
+    FD_SET(svrfd, &master_rfds);
     
     struct sockaddr_in client_addr;
     int clifd;
@@ -139,6 +146,7 @@ public:  // TODO: modify access
       if (select(maxfd, &working_rfds, &working_wfds, NULL, NULL) < 0) {
         ERR_EXIT("select failed");
       }
+      // fprintf(stderr, "select");
       
       if (FD_ISSET(sockfd, &working_rfds)) {
         if ((clifd = accept(sockfd, (struct sockaddr *)&client_addr, (socklen_t *)&clilen)) < 0) {
@@ -163,15 +171,19 @@ public:  // TODO: modify access
               handleRead(fd);
               std::string req(buf);
               ss << req;
+              fprintf(stderr, "strlen(buf): %lu\n",strlen(buf));
             } while (strlen(buf) == BUF_LEN && buf[BUF_LEN-1] != '\n');
             
             /* To browser */
             std::string command, target;
             ss >> command >> target;
+            fprintf(stderr, "command: %s target:%s\n",command.c_str(), target.c_str());
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
+              // fprintf(stderr, "STATE_SEND_GET_REQ_TO_SVR\n");
               FD_SET(fd, &master_wfds);
+              fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
               // TODO
               fprintf(stderr, "========%s %s=========\n",command.c_str(), target.c_str());
@@ -186,6 +198,7 @@ public:  // TODO: modify access
             handleRead(fd);
             responseLenFromSvr = atoi(buf);
             state = STATE_SEND_GET_LEN_ACK_TO_SVR;
+            fprintf(stderr, "responseLenFromSvr:%d\n", responseLenFromSvr);
           }
           else if (state == STATE_WAIT_GET_RES_FROM_SVR && fd == svrfd) {
             handleRead(fd);
@@ -195,16 +208,17 @@ public:  // TODO: modify access
         } else if (FD_ISSET(fd, &working_wfds)) {
           /** Write **/
           if (state == STATE_SEND_GET_REQ_TO_SVR && fd == svrfd) {
-            handleWrite(fd, requestToSvr);
+            handleWrite(svrfd, requestToSvr);
             state = STATE_WAIT_GET_LEN_FROM_SVR;
-            fprintf(stderr, "STATE_WAIT_GET_LEN_FROM_SVR");
-            fprintf(stderr, "%s\n", requestToSvr.c_str());
+            // fprintf(stderr, "STATE_WAIT_GET_LEN_FROM_SVR");
+            // fprintf(stderr, "%s\n", requestToSvr.c_str());
           }
           else if (state == STATE_SEND_GET_LEN_ACK_TO_SVR && fd == svrfd) {
-            handleWrite(fd, ACK);
+            handleWrite(svrfd, ACK);
             state = STATE_WAIT_GET_RES_FROM_SVR;
           }
-          else if (state == STATE_SEND_GET_RES_TO_BROWSER && fd == browserfd) {
+          else if (state == STATE_SEND_GET_RES_TO_BROWSER && fd == browserfd) { 
+          //if (state == STATE_SEND_GET_RES_TO_BROWSER && fd == browserfd) {
             if (!headerSent) {
               handleWrite(fd, httpGetHeader(responseTypeToBrowser));
               headerSent = true;
@@ -255,10 +269,11 @@ public:  // TODO: modify access
 
   void closeFD(int fd) {
     fprintf(stderr, "closeFD: %d\n", fd);
-    FD_CLR(fd, &master_rfds);  //?
-    FD_CLR(fd, &master_wfds);  //?
+    
     close(fd);
     if (fd != svrfd) {
+      FD_CLR(fd, &master_rfds);  //?
+      FD_CLR(fd, &master_wfds);  //?
       responseLenFromSvr = 0;
       headerSent = false;
     }

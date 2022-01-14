@@ -61,7 +61,40 @@ function loadUserFriends(friends) {
     }
 }
 
+var curFriend='Alice';
+const messageInput = document.getElementById('message-input');
+messageInput.addEventListener('keypress', async e => {
+    try{
+        if (e.key == 'Enter') {
+            if (messageInput.value.length > 0) {
+                sendMessage();
+            }
+            messageInput.value='';
+        } 
+    }
+    catch (err) {
+        console.error(`Error: ${err}`);
+    }
+});
 
+const messageSendBtn = document.getElementById('message-send-btn');
+messageSendBtn.addEventListener('click', async _ => {
+    try{
+        if (messageInput.value.length > 0) {
+            sendMessage();
+        }
+        messageInput.value='';    
+    }
+    catch (err) {
+        console.error(`Error: ${err}`);
+    }
+});
 
-
+async function sendMessage() {
+    var msg = `msg=${curFriend}=${messageInput.value}`;
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", location.href, true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(msg);
+}
 
