@@ -1,12 +1,12 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -33,6 +33,58 @@ namespace fs = std::filesystem;
 #define MAXFD 128
 
 const fs::path server_dir{"server_dir"};
+
+void closeFD(int fd) {
+  fprintf(stderr, "closeFD: %d\n", fd);
+  close(fd);
+}
+
+int handleRecv(int connfd, char *buf) {
+  bzero(buf, BUFLEN);
+  int ret = recv(connfd, buf, BUFLEN, 0);
+  if (ret <= 0) {
+    closeFD(connfd);
+    pthread_exit((void *)1);
+  } else {
+    fprintf(stderr, "========handleRead: connfd:%d=========\n", connfd);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
+  }
+  return ret;
+}
+
+int _handleSend(int connfd, char *buf) {
+  int writeLen = strlen(buf);
+  int ret = send(connfd, buf, writeLen, MSG_NOSIGNAL);
+  if (ret != writeLen) {
+    closeFD(connfd);
+    return ret;
+  } else {
+    fprintf(stderr,
+            "========handleWrite: connfd:%d buf_last_char:%d=========\n",
+            connfd, buf[strlen(buf) - 1]);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
+  }
+  return ret;
+}
+
+int handleSend(int connfd, char *buf, std::string str = "") {
+  int ret, writeLen;
+  std::string tmp;
+  if (str == "") {
+    ret = _handleSend(connfd, buf);
+  } else {
+    while (str.size()) {
+      writeLen = (str.size() < BUFLEN) ? str.size() : BUFLEN;
+      tmp = str.substr(0, writeLen);
+      str = str.substr(writeLen);
+      sprintf(buf, "%s", tmp.c_str());
+      ret = _handleSend(connfd, buf);
+    }
+  }
+  return ret;
+}
 
 class Client {
  public:
@@ -135,10 +187,10 @@ class Client {
     char friends[MAXFD][32];
     int idx = 0, filelen = 0;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-      const unsigned char* content = sqlite3_column_text(stmt, 0);
+      const unsigned char *content = sqlite3_column_text(stmt, 0);
       fprintf(stderr, "%s", content);
       fflush(stderr);
-      sprintf(friends[idx], "%s", content); 
+      sprintf(friends[idx], "%s", content);
       filelen += strlen(friends[idx]);
       fprintf(stderr, "%d\n", filelen);
       fflush(stderr);
@@ -146,30 +198,17 @@ class Client {
     }
 
     char buf[BUFLEN];
-    sprintf(buf, "%d", filelen + 2*(idx) + 2*(idx - 1) + 2);
-    send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
-    recv(connfd, buf, BUFLEN, 0);
+    sprintf(buf, "%d", filelen + 2 * (idx) + 2 * (idx - 1) + 2);
+    handleSend(connfd, buf);
+    handleRecv(connfd, buf);
 
-    sprintf(buf, "[");
-    int first = 1;
+    std::string sbuf = "[";
     for (int i = 0; i < idx; i++) {
-      if (strlen(buf) + strlen(friends[i]) + 2 >= BUFLEN) {
-        send(connfd, buf, BUFLEN, MSG_NOSIGNAL);
-        buf[0] = 0;
-      }
-      if (first)
-        first = 0;
-      else
-        sprintf(buf + strlen(buf), ", ");
-      sprintf(buf + strlen(buf), "\"%s\"", friends[i]);
+      if (i) sbuf += ", ";
+      sbuf += "\"" + std::string(friends[i]) + "\"";
     }
-
-    if (strlen(buf) + 1 >= BUFLEN) {
-      send(connfd, buf, BUFLEN, MSG_NOSIGNAL);
-      buf[0] = 0;
-    }
-    sprintf(buf + strlen(buf), "]");
-    send(connfd, buf, BUFLEN, MSG_NOSIGNAL);
+    sbuf += "]";
+    handleSend(connfd, buf, sbuf);
 
     if (rc != SQLITE_DONE) {
       fprintf(stderr, "error: %s\n", sqlite3_errmsg(db));
@@ -248,15 +287,7 @@ void handling_client(void *arg) {
   char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
       something[BUFLEN], filename[BUFLEN], buf[BUFLEN];
   while (1) {
-    bzero(command, BUFLEN);
-    n = recv(connfd, command, BUFLEN, 0);
-    fprintf(stderr, "server recv %s, recv %d bytes, last character = %d\n", command, n, command[n]);
-    fflush(stderr);
-    if (n <= 0) {
-      close(connfd);
-      pthread_exit((void *)1);
-    }
-    // TODO: process command
+    handleRecv(connfd, command);
 
     char *pch;
     int file_fd;
@@ -317,44 +348,32 @@ void handling_client(void *arg) {
         strcpy(username, pch);
         pch = strtok(NULL, " ");
         strcpy(filename, pch);
-        send(connfd, "1", 2, MSG_NOSIGNAL);
-        n = recv(connfd, buf, BUFLEN, 0);
-        if (n <= 0) {
-          close(connfd);
-          pthread_exit((void *)1);
-        }
+        handleSend(connfd, buf, "1");
+        handleRecv(connfd, buf);
         int filelen;
         sscanf(buf, "%*s %d", &filelen);
-        send(connfd, "1", 2, MSG_NOSIGNAL);
+        handleSend(connfd, buf, "1");
         file_fd =
             open(fs::path({server_dir / username / filename}).string().c_str(),
                  O_CREAT | O_RDWR, FILE_MODE);
-        while (filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
+        while (filelen > 0 && (n = handleRecv(connfd, buf)) > 0) {
           write(file_fd, buf, n);
           filelen -= n;
         }
         close(file_fd);
-        if (n <= 0) {
-          close(connfd);
-          pthread_exit((void *)1);
-        }
         break;
       case 'g':
         struct stat st;
         stat(fs::path({server_dir / username / filename}).string().c_str(),
              &st);
         sprintf(buf, "%s %d\n", filename, (int)st.st_size);
-        send(connfd, buf, strlen(buf), MSG_NOSIGNAL);
-        n = recv(connfd, buf, BUFLEN, 0);
-        if (n <= 0) {
-          close(connfd);
-          pthread_exit((void *)1);
-        }
+        handleSend(connfd, buf);
+        handleRecv(connfd, buf);
         file_fd =
             open(fs::path({server_dir / username / filename}).string().c_str(),
                  O_RDWR);
         while ((n = read(file_fd, buf, BUFLEN)) > 0) {
-          send(connfd, buf, n, MSG_NOSIGNAL);
+          handleSend(connfd, buf);
         }
         break;
     }
@@ -380,7 +399,7 @@ void serve(int sockfd) {
 
     if (FD_ISSET(sockfd, &working_rfds)) {
       int connfd = accept(sockfd, NULL, NULL);
-      //pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
+      // pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
       handling_client(&(connfd));
     }
   }

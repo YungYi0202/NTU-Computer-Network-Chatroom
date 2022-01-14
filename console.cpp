@@ -15,10 +15,9 @@
 
 #include <algorithm>
 #include <fstream>
-#include <sstream>
-#include <string>
 #include <iostream>
 #include <sstream>
+#include <string>
 
 #define ERR_EXIT(a) \
   do {              \
@@ -32,6 +31,58 @@
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+
+void closeFD(int fd) {
+  fprintf(stderr, "closeFD: %d\n", fd);
+  close(fd);
+}
+
+int handleRecv(int connfd, char *buf) {
+  bzero(buf, BUF_LEN);
+  int ret = recv(connfd, buf, BUF_LEN, 0);
+  if (ret <= 0) {
+    closeFD(connfd);
+    pthread_exit((void *)1);
+  } else {
+    fprintf(stderr, "========handleRead: connfd:%d=========\n", connfd);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
+  }
+  return ret;
+}
+
+int _handleSend(int connfd, char *buf) {
+  int writeLen = strlen(buf);
+  int ret = send(connfd, buf, writeLen, MSG_NOSIGNAL);
+  if (ret != writeLen) {
+    closeFD(connfd);
+    return ret;
+  } else {
+    fprintf(stderr,
+            "========handleWrite: connfd:%d buf_last_char:%d=========\n",
+            connfd, buf[strlen(buf) - 1]);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
+  }
+  return ret;
+}
+
+int handleSend(int connfd, char *buf, std::string str = "") {
+  int ret, writeLen;
+  std::string tmp;
+  if (str == "") {
+    ret = _handleSend(connfd, buf);
+  } else {
+    while (str.size()) {
+      writeLen = (str.size() < BUF_LEN) ? str.size() : BUF_LEN;
+      tmp = str.substr(0, writeLen);
+      str = str.substr(writeLen);
+      sprintf(buf, "%s", tmp.c_str());
+      ret = _handleSend(connfd, buf);
+    }
+  }
+  return ret;
+}
 
 class Client {
  public:
@@ -58,16 +109,18 @@ class Client {
   }
 
   void listFriend(const char *username) {
-    recv(server_fd, buf, BUF_LEN, 0);
+    handleRecv(server_fd, buf);
     int filelen;
     sscanf(buf, "%d", &filelen);
     fprintf(stderr, "list friend len = %d\n", filelen);
-    send(server_fd, "1", 2, 0);
+    handleSend(server_fd, buf, "1");
     int n;
-    while(filelen > 0 && (n = recv(server_fd, buf, BUF_LEN, 0)) > 0) {
+    while (filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
       printf("%s", buf);
       filelen -= n;
+      fprintf(stderr, "filelen = %d, n = %d\n", filelen, n);
     }
+    fprintf(stderr, "filelen = %d\n", filelen);
   }
 
   void history(const char *username, const char *friend_name) {
@@ -104,14 +157,12 @@ int main(int argc, char *argv[]) {
   client.initClient(ip, port_num);
   std::string s, command, username, friend_name, something, filename;
   while (getline(std::cin, s)) {
-    fflush(stdin);
     std::cerr << "recv command: " << s << std::endl;
-    sprintf(buf, "%s", s.c_str());
-    send(client.server_fd, buf, strlen(buf), MSG_NOSIGNAL);
+    handleSend(client.server_fd, buf, s);
 
     std::stringstream ss(s);
     ss >> command;
-    switch(command[0]) {
+    switch (command[0]) {
       case 'l':
         ss >> username;
         std::cerr << "username: " << username << std::endl;
