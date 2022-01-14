@@ -32,7 +32,7 @@ namespace fs = std::filesystem;
 #define BUFLEN 2048
 #define MAXFD 128
 
-const fs::path server_dir{"server_dir"};
+char server_dir[] = "server_dir";
 
 void closeFD(int fd) {
   fprintf(stderr, "closeFD: %d\n", fd);
@@ -277,7 +277,7 @@ class Client {
   }
 };
 
-void handling_client(void *arg) {
+void *handling_client(void *arg) {
   int connfd = *(int *)arg;
   Client client;
   client.connfd = connfd;
@@ -338,7 +338,7 @@ void handling_client(void *arg) {
         strcpy(username, pch);
         client.addUser(username);
         break;
-      case 'p':
+      /*case 'p':
         if (!fs::exists({server_dir / username})) {
           std::ofstream{server_dir / username};
         }
@@ -361,17 +361,23 @@ void handling_client(void *arg) {
           filelen -= n;
         }
         close(file_fd);
-        break;
+        break;*/
       case 'g':
+        char *pch;
+        pch = strtok(command, " ");
+        pch = strtok(NULL, " ");
+        strcpy(username, pch);
+        pch = strtok(NULL, " ");
+        strcpy(filename, pch);
+        char path[BUFLEN];
+        sprintf(path, "%s/%s/%s", server_dir, username, filename);
         struct stat st;
-        stat(fs::path({server_dir / username / filename}).string().c_str(),
-             &st);
-        sprintf(buf, "%s %d\n", filename, (int)st.st_size);
+        fprintf(stderr, "get file %s\n", path);
+        stat(path, &st);
+        sprintf(buf, "%d\n", (int)st.st_size);
         handleSend(connfd, buf);
         handleRecv(connfd, buf);
-        file_fd =
-            open(fs::path({server_dir / username / filename}).string().c_str(),
-                 O_RDWR);
+        file_fd = open(path, O_RDWR);
         while ((n = read(file_fd, buf, BUFLEN)) > 0) {
           handleSend(connfd, buf);
         }
@@ -399,8 +405,8 @@ void serve(int sockfd) {
 
     if (FD_ISSET(sockfd, &working_rfds)) {
       int connfd = accept(sockfd, NULL, NULL);
-      // pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
-      handling_client(&(connfd));
+      pthread_create(&(ntid[ntid_cnt++]), NULL, handling_client, &(connfd));
+      // handling_client(&(connfd));
     }
   }
   // pthread_join(ntid[?], NULL);
