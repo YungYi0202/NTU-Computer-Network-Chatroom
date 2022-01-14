@@ -223,6 +223,11 @@ public:  // TODO: modify access
                     } else {
                         /* other post request */
                         fprintf(stderr, "%s", tmp.c_str());
+                        /*
+                            say=friendname=content
+                            add=friendname
+                            delete=friendname
+                        */
                         pos = tmp.find("=");
                         std::string cmd = tmp.substr(0, pos);
                         tmp = tmp.substr(pos + 1);
@@ -231,10 +236,8 @@ public:  // TODO: modify access
                             std::string friendname = tmp.substr(0, pos);
                             std::string content = tmp.substr(pos + 1);
                             requestToSvr = "say " + username + " " + friendname + " " + content;
-                        } else if (cmd == "add") {
-                            // TODO
-                        } else if (cmd == "delete") {
-                            // TODO
+                        } else if (cmd == "add" || cmd == "delete") {
+                            requestToSvr = cmd + " " + username + " " + tmp;
                         } else {
                             fprintf(stderr, "Wrong POST content which starts with cmd:%s\n", cmd.c_str());
                             handleWrite(fd, POST_RES_ERROR);

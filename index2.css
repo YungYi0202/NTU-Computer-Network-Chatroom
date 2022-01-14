@@ -31,8 +31,9 @@ ul {
 	 padding: 14px;
 	 color: white;
 	 background: #6a6c75;
-	 width: 90%;
+	 width: 190px;
 	 font-size: 14px;
+	 display: inline-block;
 }
  .people-list .fa-plus {
 	 position: relative;
@@ -43,10 +44,16 @@ ul {
 	 height: 770px;
 }
  .people-list ul li {
-	 padding-bottom: 20px;
+	 padding: 5px; 
 }
  .people-list ul li:hover {
     background-color: #707589;
+}
+ .people-list ul li div{
+	display: inline-block;
+}
+ .people-list ul li button {
+    float: right;
 }
 
  .people-list .about {
