@@ -44,7 +44,7 @@ int handleRecv(int connfd, char *buf) {
     closeFD(connfd);
     pthread_exit((void *)1);
   } else {
-    fprintf(stderr, "========handleRead: connfd:%d=========\n", connfd);
+    fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
     fprintf(stderr, "%s", buf);
     fprintf(stderr, "=============================\n");
   }
@@ -59,7 +59,7 @@ int _handleSend(int connfd, char *buf) {
     return ret;
   } else {
     fprintf(stderr,
-            "========handleWrite: connfd:%d buf_last_char:%d=========\n",
+            "========handleSend: connfd:%d buf_last_char:%d=========\n",
             connfd, buf[strlen(buf) - 1]);
     fprintf(stderr, "%s", buf);
     fprintf(stderr, "=============================\n");
@@ -125,7 +125,15 @@ class Client {
   }
 
   void history(const char *username, const char *friend_name) {
-    recv(server_fd, buf, BUF_LEN, 0);
+    handleRecv(server_fd, buf);
+    int filelen;
+    sscanf(buf, "%d", &filelen);
+    handleSend(server_fd, buf, "1");
+    int n;
+    while(filelen && (n = handleRecv(server_fd, buf)) > 0) {
+      printf("%s", buf);
+      filelen -= n;
+    }
   }
 
   void put(const char *username, const char *filename) {
@@ -133,7 +141,8 @@ class Client {
   }
 
   void get(const char *username, const char *filename) {
-    // incomplete
+    // TODO: will not overwrite the whole file, hence, if new file len > past file len, then the content
+    // over new file len will remain the same
     handleRecv(server_fd, buf);
     int filelen;
     sscanf(buf, "%d", &filelen);
