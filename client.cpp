@@ -181,11 +181,9 @@ public:  // TODO: modify access
           if (state == STATE_WAIT_REQ_FROM_BROWSER && fd != svrfd) {
             browserfd = fd;
             std::stringstream ss;
-            do {
-              handleRead(fd);
-              std::string req(buf);
-              ss << req;
-            } while (strlen(buf) == BUF_LEN && buf[BUF_LEN-1] != '\n');
+            handleRead(fd);
+            std::string req(buf);
+            ss << req;
             FD_SET(fd, &master_wfds);
 
             /* To browser */
