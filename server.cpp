@@ -312,6 +312,7 @@ class Client {
   }
   std::vector<historyData> data;
   void processHistory() {
+    data.clear();
     std::stringstream ss(history);
     std::string line;
     while (getline(ss, line)) {
