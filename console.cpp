@@ -44,9 +44,9 @@ int handleRecv(int connfd, char *buf) {
     closeFD(connfd);
     pthread_exit((void *)1);
   } else {
-    fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
-    fprintf(stderr, "%s", buf);
-    fprintf(stderr, "=============================\n");
+    // fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
+    // fprintf(stderr, "%s", buf);
+    // fprintf(stderr, "=============================\n");
   }
   return ret;
 }
@@ -58,10 +58,10 @@ int _handleSend(int connfd, char *buf) {
     closeFD(connfd);
     return ret;
   } else {
-    fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
-            connfd, buf[strlen(buf) - 1]);
-    fprintf(stderr, "%s", buf);
-    fprintf(stderr, "=============================\n");
+    // fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
+    //         connfd, buf[strlen(buf) - 1]);
+    // fprintf(stderr, "%s", buf);
+    // fprintf(stderr, "=============================\n");
   }
   return ret;
 }
@@ -85,14 +85,12 @@ int handleSend(int connfd, char *buf, std::string str = "") {
 }
 
 int handleRead(std::string path, std::string *file_content) {
-  std::cerr << "read " << path << std::endl;
   std::ifstream targetFile;
   std::string line;
   targetFile.open(path);
   if (targetFile.is_open()) {
     while (getline(targetFile, line)) {
       *file_content = *file_content + line + '\n';
-      std::cerr << *file_content << std::endl;
     }
   }
   file_content->pop_back();
@@ -127,7 +125,6 @@ class Client {
     handleRecv(server_fd, buf);
     int filelen;
     sscanf(buf, "%d", &filelen);
-    fprintf(stderr, "list friend len = %d\n", filelen);
     handleSend(server_fd, buf, "1");
     int n;
     while (filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
@@ -148,13 +145,24 @@ class Client {
     }
   }
 
-  void put(const char *username, const char *filename) {
+  void put(const char *username, const char *friend_name, const char *filename) {
     sprintf(path, "client_dir/%s", filename);
-    std::string file_content;
-    handleRead(std::string(path), &file_content);
-    handleSend(server_fd, buf, std::to_string(file_content.length()));
+    struct stat st;
+    stat(path, &st);
+    handleSend(server_fd, buf, std::to_string((int)st.st_size));
     handleRecv(server_fd, buf);
-    handleSend(server_fd, buf, file_content);
+    int n;
+    int file_fd = open(path, O_RDWR);
+    while((n = read(file_fd, buf, BUF_LEN)) > 0) {
+      send(server_fd, buf, n, 0);
+    }
+
+
+    // std::string file_content;
+    // handleRead(std::string(path), &file_content);
+    // handleSend(server_fd, buf, std::to_string(file_content.length()));
+    // handleRecv(server_fd, buf);
+    // handleSend(server_fd, buf, file_content);
   }
 
   void get(const char *username, const char *filename) {
@@ -163,14 +171,15 @@ class Client {
     handleRecv(server_fd, buf);
     int filelen;
     sscanf(buf, "%d", &filelen);
-    fprintf(stderr, "filelen = %d\n", filelen);
     handleSend(server_fd, buf, "1");
     sprintf(path, "client_dir/%s", filename);
     int n;
     int file_fd = open(path, O_CREAT | O_RDWR, FILE_MODE);
-    while (filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
+    bzero(buf, BUF_LEN);
+    while (filelen > 0 && (n = recv(server_fd, buf, BUF_LEN, 0)) > 0) {
       write(file_fd, buf, n);
       filelen -= n;
+      bzero(buf, BUF_LEN);
     }
     close(file_fd);
   }
@@ -213,8 +222,8 @@ int main(int argc, char *argv[]) {
         client.history(username.c_str(), friend_name.c_str());
         break;
       case 'p':
-        ss >> username >> filename;
-        client.put(username.c_str(), filename.c_str());
+        ss >> username >> friend_name >> filename;
+        client.put(username.c_str(), friend_name.c_str(), filename.c_str());
         break;
       case 'g':
         ss >> username >> filename;

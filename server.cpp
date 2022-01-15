@@ -47,9 +47,9 @@ int handleRecv(int connfd, char *buf) {
     closeFD(connfd);
     pthread_exit((void *)1);
   } else {
-    fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
-    fprintf(stderr, "%s", buf);
-    fprintf(stderr, "=============================\n");
+    // fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
+    // fprintf(stderr, "%s", buf);
+    // fprintf(stderr, "=============================\n");
   }
   return ret;
 }
@@ -61,7 +61,6 @@ int handleRead(std::string path, std::string *file_content) {
   if (targetFile.is_open()) {
     while (getline(targetFile, line)) {
       *file_content = *file_content + line + '\n';
-      std::cerr << *file_content << std::endl;
     }
   }
   file_content->pop_back();
@@ -75,16 +74,16 @@ int _handleSend(int connfd, char *buf) {
     closeFD(connfd);
     return ret;
   } else {
-    fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
-            connfd, buf[strlen(buf) - 1]);
-    fprintf(stderr, "%s", buf);
-    fprintf(stderr, "=============================\n");
+    // fprintf(stderr, "========handleSend: connfd:%d
+    // buf_last_char:%d=========\n",
+    //         connfd, buf[strlen(buf) - 1]);
+    // fprintf(stderr, "%s", buf);
+    // fprintf(stderr, "=============================\n");
   }
   return ret;
 }
 
 int handleSend(int connfd, char *buf, std::string str = "") {
-  std::cerr << "str = " << str << std::endl;
   int ret, writeLen;
   std::string tmp;
   if (str == "") {
@@ -95,10 +94,7 @@ int handleSend(int connfd, char *buf, std::string str = "") {
       writeLen = (str.size() < BUFLEN) ? str.size() : BUFLEN;
       tmp = str.substr(0, writeLen);
       str = str.substr(writeLen);
-      // fprintf(stderr, "original buf = %s\n", buf);
-      std::cerr << "tmp=" << tmp << std::endl;
       sprintf(buf, "%s", tmp.c_str());
-      // fprintf(stderr, "buf = %s\n", buf);
       ret = _handleSend(connfd, buf);
     }
   }
@@ -112,11 +108,11 @@ int _handleWrite(int file_fd, char *buf) {
     closeFD(file_fd);
     return ret;
   } else {
-    fprintf(stderr,
-            "========handleWrite: file_fd:%d buf_last_char:%d=========\n",
-            file_fd, buf[strlen(buf) - 1]);
-    fprintf(stderr, "%s", buf);
-    fprintf(stderr, "=============================\n");
+    // fprintf(stderr,
+    //         "========handleWrite: file_fd:%d buf_last_char:%d=========\n",
+    //         file_fd, buf[strlen(buf) - 1]);
+    // fprintf(stderr, "%s", buf);
+    // fprintf(stderr, "=============================\n");
   }
   return ret;
 }
@@ -371,7 +367,6 @@ class Client {
   void say(std::string username, std::string friend_name,
            std::string something) {
     std::string record = username + " " + friend_name + " " + something + "\n";
-    std::cerr << "record = " << record << std::endl;
     addHistory(username.c_str(), friend_name.c_str(), record.c_str());
   }
 };
@@ -410,7 +405,6 @@ void *handling_client(void *arg) {
       case 's':
         commandss >> command >> username >> friend_name;
         getline(commandss, something);
-        std::cerr << "something = " << something << std::endl;
         client.say(username, friend_name, something);
         break;
       case 'j':
@@ -418,29 +412,54 @@ void *handling_client(void *arg) {
         client.addUser(username.c_str());
         break;
       case 'p': {
-        commandss >> command >> username >> filename;
-        const fs::path dir = server_dir + "/" + username;
-        if (!fs::exists(dir)) {
-          std::cerr << "dir = " << dir << std::endl;
-          fs::create_directory(dir);
-        }
+        commandss >> command >> username >> friend_name >> filename;
+        char dir_path[128], c_path_user[128], c_path_friend[128];
+        sprintf(dir_path, "server_dir/%s", username.c_str());
+        mkdir(dir_path, DIR_MODE);
+        sprintf(dir_path, "server_dir/%s", friend_name.c_str());
+        mkdir(dir_path, DIR_MODE);
+        sprintf(c_path_user, "server_dir/%s/%s", username.c_str(),
+                filename.c_str());
+        sprintf(c_path_friend, "server_dir/%s/%s", friend_name.c_str(),
+                filename.c_str());
         handleSend(connfd, buf, "1");
         handleRecv(connfd, buf);
         int filelen;
         sscanf(buf, "%d", &filelen);
         handleSend(connfd, buf, "1");
-        char c_path[128];
-        sprintf(c_path, "server_dir/%s/%s", username.c_str(), filename.c_str());
-        int file_fd = open(c_path, O_CREAT | O_RDWR, FILE_MODE);
-        while (filelen > 0 && (n = handleRecv(connfd, buf)) > 0) {
-          write(file_fd, buf, n);
+        int file_fd_user = open(c_path_user, O_CREAT | O_RDWR, FILE_MODE);
+        int file_fd_friend = open(c_path_friend, O_CREAT | O_RDWR, FILE_MODE);
+        bzero(buf, BUFLEN);
+        while (filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
+          write(file_fd_user, buf, n);
+          write(file_fd_friend, buf, n);
           filelen -= n;
+          bzero(buf, BUFLEN);
         }
-        close(file_fd);
+        close(file_fd_user);
+        close(file_fd_friend);
         break;
       }
       case 'g':
         commandss >> command >> username >> filename;
+        char c_path[128];
+        sprintf(c_path, "server_dir/%s/%s", username.c_str(), filename.c_str());
+        struct stat st;
+        int valid = stat(c_path, &st);
+        if (valid == -1)
+          handleSend(connfd, buf, "0");
+        else
+          handleSend(connfd, buf, std::to_string((int)st.st_size));
+        handleRecv(connfd, buf);
+        int n;
+        int file_fd = open(c_path, O_RDWR);
+        if (file_fd != -1) {
+          while ((n = read(file_fd, buf, BUFLEN)) > 0) {
+            send(connfd, buf, n, 0);
+          }
+        }
+
+        /*commandss >> command >> username >> filename;
         std::string path =
             std::string(server_dir) + "/" + username + "/" + filename;
         std::string file_content;
@@ -448,7 +467,7 @@ void *handling_client(void *arg) {
         handleSend(connfd, buf, std::to_string(file_content.length()));
         handleRecv(connfd, buf);
         handleSend(connfd, buf, file_content);
-        break;
+        break;*/
     }
   }
 }
