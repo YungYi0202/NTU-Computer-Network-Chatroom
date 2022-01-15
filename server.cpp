@@ -464,9 +464,12 @@ void *handling_client(void *arg) {
         handleRecv(connfd, buf);
         int n;
         int file_fd = open(c_path, O_RDWR);
+        int filelen = (int)st.st_size;
         if (file_fd != -1) {
           while ((n = read(file_fd, buf, BUFLEN)) > 0) {
-            send(connfd, buf, n, 0);
+            n = send(connfd, buf, n, 0);
+            filelen -= n;
+            fprintf(stderr, "n = %d\n", n);
           }
         }
 
