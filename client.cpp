@@ -185,23 +185,19 @@ public:  // TODO: modify access
               handleRead(fd);
               std::string req(buf);
               ss << req;
-              fprintf(stderr, "strlen(buf): %lu\n",strlen(buf));
             } while (strlen(buf) == BUF_LEN && buf[BUF_LEN-1] != '\n');
             FD_SET(fd, &master_wfds);
 
             /* To browser */
             std::string command, target;
             ss >> command >> target;
-            fprintf(stderr, "command: %s target:%s\n",command.c_str(), target.c_str());
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
-              // Directly return the header
-              // handleWrite(fd, httpGetHeader(responseTypeToBrowser));
+              
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
                 std::string tmp = ss.str();
-                // int contentLen = 0;
                 int pos;
                 /* Read Header*/
                 while((pos = tmp.find('\n')) != std::string::npos) {
@@ -293,7 +289,7 @@ public:  // TODO: modify access
                 } 
                 else if (state == STATE_SEND_GET_LEN_ACK_TO_SVR) {
                     handleWrite(svrfd, ACK);
-                    
+                    // Directly return the header
                     if (responseLenFromSvr <= 0) {
                       handleWrite(browserfd, httpGetHeader(responseTypeToBrowser, "404 Not Found"));
                       // handleWrite(browserfd, CRLF);
