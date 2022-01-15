@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -32,7 +33,7 @@ namespace fs = std::filesystem;
 #define BUFLEN 2048
 #define MAXFD 128
 
-char server_dir[] = "server_dir";
+std::string server_dir = "server_dir";
 
 void closeFD(int fd) {
   fprintf(stderr, "closeFD: %d\n", fd);
@@ -138,12 +139,19 @@ int handleWrite(int file_fd, char *buf, std::string str = "") {
   return ret;
 }
 
+struct historyData {
+  std::string From;
+  std::string To;
+  std::string Content;
+};
+
 class Client {
  public:
   int connfd;
   sqlite3 *db, *users;
   char *zErrMsg = 0;
   char csql[BUFLEN];
+  std::string history;
   static int callback(void *NotUsed, int argc, char **argv, char **azColName) {
     int i;
     for (i = 0; i < argc; i++) {
@@ -208,7 +216,7 @@ class Client {
     rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "create username table");
   }
-  void addFriend(char *username, char *friend_name) {
+  void addFriend(const char *username, const char *friend_name) {
     sprintf(csql,
             "INSERT INTO CHATROOM "
             "VALUES ('%s', '%s', ''); ",
@@ -216,13 +224,13 @@ class Client {
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "add friend");
   }
-  void deleteFriend(char *username, char *friend_name) {
+  void deleteFriend(const char *username, const char *friend_name) {
     sprintf(csql, "DELETE FROM CHATROOM WHERE USERNAME='%s' AND FRIEND='%s';",
             username, friend_name);
     int rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "delete friend");
   }
-  void listFriends(char *username) {
+  void listFriends(const char *username) {
     sqlite3_stmt *stmt;
     fprintf(stderr, "list %s friends\n", username);
     fflush(stderr);
@@ -267,7 +275,8 @@ class Client {
     }
     sqlite3_finalize(stmt);
   }
-  void addHistory(char *username, char *friend_name, char *history) {
+  void addHistory(const char *username, const char *friend_name,
+                  const char *history) {
     sprintf(csql,
             "UPDATE CHATROOM "
             "SET HISTORY=HISTORY||'%s' "
@@ -282,22 +291,52 @@ class Client {
     rc = sqlite3_exec(db, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "add history");
   }
-  static int printHistoryCallback(void *connfd, int argc, char **argv,
-                                  char **azColName) {
-    char buf[BUFLEN];
-    for (int i = 0; i < argc; i++) {
-      sprintf(buf + strlen(buf), "%s\n", argv[i] ? argv[i] : "NULL");
-    }
-    send(*(int *)connfd, buf, strlen(buf), MSG_NOSIGNAL);
-    return 0;
-    // TODO: the history should not be longer than 512 characters
-  }
-  void printHistory(char *username, char *friend_name) {
+  void printHistory(const char *username, const char *friend_name) {
+    sqlite3_stmt *stmt;
     sprintf(csql,
             "SELECT HISTORY FROM CHATROOM WHERE USERNAME='%s' AND FRIEND='%s';",
             username, friend_name);
-    int rc = sqlite3_exec(db, csql, printHistoryCallback, &connfd, &zErrMsg);
-    errorHandling(rc, "print history");
+    int rc = sqlite3_prepare_v2(db, csql, -1, &stmt,
+                                NULL);  // -1: read to first null byte
+    if (rc != SQLITE_OK) {
+      fprintf(stderr, "Can't print history: %s\n", sqlite3_errmsg(db));
+      return;
+    }
+    sqlite3_bind_int(stmt, 1, 1);
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+      const unsigned char *content = sqlite3_column_text(stmt, 0);
+      history = std::string((const char*)content);  // history length no more than 1e6
+    }
+    processHistory();
+  }
+  std::vector<historyData> data;
+  void processHistory() {
+    std::stringstream ss(history);
+    std::string line;
+    while (getline(ss, line)) {
+      std::stringstream sline(line);
+      std::string from, to, something;
+      sline >> from >> to;
+      getline(sline, something);
+      data.push_back({from, to, something});
+    }
+    std::string json = "[\n";
+    for (int i = 0; i < data.size(); i++) {
+      historyData hd = data[i];
+      if (i) json += ",\n";
+      json += "{\n";
+      json += "\"From\": \"" + hd.From + "\",\n";
+      json += "\"To\": \"" + hd.To + "\",\n";
+      json += "\"Content\": \"" + hd.Content + "\"\n";
+      json += "}";
+    }
+    json += "\n]";
+
+    char buf[BUFLEN];
+    handleSend(connfd, buf, std::to_string(json.length()));
+    handleRecv(connfd, buf);
+    handleSend(connfd, buf, json);
   }
   void printDatabase() {
     sprintf(csql, "SELECT * FROM CHATROOM;");
@@ -316,7 +355,7 @@ class Client {
     return 0;
     // TODO: the history should not be longer than 512 characters
   }
-  void addUser(char *username) {
+  void addUser(const char *username) {
     sprintf(csql, "SELECT * FROM USERNAME WHERE USERNAME='%s';", username);
     int rc = sqlite3_exec(users, csql, addUserCallback, &connfd, &zErrMsg);
     errorHandling(rc, "query username");
@@ -327,6 +366,12 @@ class Client {
     rc = sqlite3_exec(users, csql, callback, 0, &zErrMsg);
     errorHandling(rc, "add username");
   }
+  void say(std::string username, std::string friend_name,
+           std::string something) {
+    std::string record = username + " " + friend_name + " " + something + "\n";
+    std::cerr << "record = " << record << std::endl;
+    addHistory(username.c_str(), friend_name.c_str(), record.c_str());
+  }
 };
 
 void *handling_client(void *arg) {
@@ -336,59 +381,39 @@ void *handling_client(void *arg) {
   client.openDatabase();
   int n;
 
-  char command[BUFLEN], username[BUFLEN], friend_name[BUFLEN],
-      something[BUFLEN], filename[BUFLEN], buf[BUFLEN];
+  char c_command[BUFLEN], buf[BUFLEN];
+  std::string username, friend_name, something, filename, command;
   while (1) {
-    handleRecv(connfd, command);
+    handleRecv(connfd, c_command);
+    std::string commands(c_command);
+    std::stringstream commandss(commands);
 
-    char *pch;
-    int file_fd;
-    switch (command[0]) {
+    switch (c_command[0]) {
       case 'a':
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        pch = strtok(NULL, " ");
-        strcpy(friend_name, pch);
-        client.addFriend(username, friend_name);
+        commandss >> command >> username >> friend_name;
+        client.addFriend(username.c_str(), friend_name.c_str());
         break;
       case 'd':
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        pch = strtok(NULL, " ");
-        strcpy(friend_name, pch);
-        client.deleteFriend(username, friend_name);
+        commandss >> command >> username >> friend_name;
+        client.deleteFriend(username.c_str(), friend_name.c_str());
         break;
       case 'l':
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        client.listFriends(username);
+        commandss >> command >> username;
+        client.listFriends(username.c_str());
         break;
       case 'h':
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        pch = strtok(NULL, " ");
-        strcpy(friend_name, pch);
-        client.printHistory(username, friend_name);
+        commandss >> command >> username >> friend_name;
+        client.printHistory(username.c_str(), friend_name.c_str());
         break;
       case 's':
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        pch = strtok(NULL, " ");
-        strcpy(friend_name, pch);
-        pch = strtok(NULL, " ");
-        strcpy(something, pch);
-        client.addHistory(username, friend_name, something);
+        commandss >> command >> username >> friend_name;
+        getline(commandss, something);
+        std::cerr << "something = " << something << std::endl;
+        client.say(username, friend_name, something);
         break;
       case 'j':
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        client.addUser(username);
+        commandss >> command >> username;
+        client.addUser(username.c_str());
         break;
       /*case 'p':
         if (!fs::exists({server_dir / username})) {
@@ -415,14 +440,9 @@ void *handling_client(void *arg) {
         close(file_fd);
         break;*/
       case 'g':
-        char *pch;
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        pch = strtok(NULL, " ");
-        strcpy(filename, pch);
-        std::string path = std::string(server_dir) + "/" +
-                           std::string(username) + "/" + std::string(filename);
+        commandss >> command >> username >> filename;
+        std::string path =
+            std::string(server_dir) + "/" + username + "/" + filename;
         std::string file_content;
         handleRead(path, &file_content);
         handleSend(connfd, buf, std::to_string(file_content.length()));
