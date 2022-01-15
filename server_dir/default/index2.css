@@ -13,7 +13,27 @@ ul {
     padding-left: 0;
 }
 .login {
+	display: flex;
+    justify-content: center; 
+    align-items: center; 
+}
 
+.login input {
+	width: 300px;
+	border: none;
+	padding: 10px 20px;
+	font: 14px/22px "Lato", Arial, sans-serif;
+	border-radius: 5px;
+	resize: none;
+}
+.login button {
+	font: 22px "Lato", Arial, sans-serif;
+	border-radius: 2px;
+	border: 0px;
+	cursor: pointer;
+	background-color: #a8aab1;
+	padding: 9px 20px;
+	margin-left: 5px;
 }
 
  .container {

@@ -14,19 +14,21 @@ const loginBtn = document.getElementById('login-btn');
 const usernameInput = document.getElementsByName('username')[0];
 
 loginBtn.addEventListener('click', async _ => {
-    try {   
-        var username = usernameInput.value;
-        var myRequest = new Request('?login=' + username, getInit);
-        const response = await fetch(myRequest);
-        const resJson = await response.json();
-        console.log('Completed!', response);
-        if (response.ok) {
-            mainWindow.style.display = 'block';
-            loginWindow.style.display = 'none';
-            loadUserFriends(resJson);
-        } else {
-            usernameInput.value = "";
-        }
+    try {  
+        if (usernameInput.value.length > 0) {
+            var username = usernameInput.value;
+            var myRequest = new Request('?login=' + username, getInit);
+            const response = await fetch(myRequest);
+            const resJson = await response.json();
+            if (response.ok) {
+                mainWindow.style.display = 'block';
+                loginWindow.style.display = 'none';
+                loadUserFriends(resJson);
+            } else {
+                usernameInput.value = "";
+            }
+            
+        } 
     } catch(err) {
         console.error(`Error: ${err}`);
     }
@@ -121,6 +123,7 @@ async function sendMessage() {
 
 async function post(msg, type) {
     var xhr = new XMLHttpRequest();
+    xhr.fileInfo = {filename: "test"}
     xhr.open("POST", location.href, true);
     xhr.setRequestHeader('Content-Type', type);
     xhr.send(msg);

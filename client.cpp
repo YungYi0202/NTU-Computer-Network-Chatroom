@@ -181,11 +181,9 @@ public:  // TODO: modify access
           if (state == STATE_WAIT_REQ_FROM_BROWSER && fd != svrfd) {
             browserfd = fd;
             std::stringstream ss;
-            do {
-              handleRead(fd);
-              std::string req(buf);
-              ss << req;
-            } while (strlen(buf) == BUF_LEN && buf[BUF_LEN-1] != '\n');
+            handleRead(fd);
+            std::string req(buf);
+            ss << req;
             FD_SET(fd, &master_wfds);
 
             /* To browser */
@@ -197,20 +195,23 @@ public:  // TODO: modify access
               
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
+                // Note: Assume only one handleRead before it reaches here.
                 std::string tmp = ss.str();
                 int pos;
                 int contentLen = 0;
                 /* Read Header*/
+                int byteCnt = 0;
                 while((pos = tmp.find('\n')) != std::string::npos) {
                     std::string line = tmp.substr(0, pos);
                     tmp = tmp.substr(pos + 1);
+                    byteCnt += line.size();
                     if (line == "\r") break;
                     if (line.substr(0, strlen(CONTENT_LEN)) == CONTENT_LEN) {
                       contentLen = atoi(line.substr(strlen(CONTENT_LEN)).c_str());
                     }
                 }
                 fprintf(stderr, "contentLen: %d\n", contentLen);
-                
+                fprintf(stderr, "buf[byteCnt]: %c\n", buf[byteCnt]);
                 /* Handle if the packet is seperated. */
                 while (tmp.size() < contentLen) {
                   int restLen = contentLen - tmp.size();
@@ -340,8 +341,10 @@ public:  // TODO: modify access
             } 
             else if (fd == browserfd) {
                 if (state == STATE_SEND_GET_RES_TO_BROWSER) {
+                  // May have bug.
                   int ret = handleWrite(fd);
                   responseLenFromSvr -= ret;
+                  fprintf(stderr, "rest len: %d\n", responseLenFromSvr);
                   if (responseLenFromSvr <= 0) {
                       handleWrite(fd, CRLF);
                       closeFD(fd);
