@@ -38,6 +38,8 @@ const chatWith = document.getElementById('chat-with');
 const chatNum = document.getElementById('chat-num-messages');
 const friendsSet = new Set();
 const friendListContainer = document.getElementById('friend-list');
+const fileInput = document.getElementById('file-input');
+
 
 function createFriendListItem(friendname) {
     const item = document.createElement('li');
@@ -65,6 +67,9 @@ function createFriendListItem(friendname) {
         try {   
             curFriend = friendname;
             await refreshHistory(friendname);
+            refreshHistoryBtn.removeAttribute('disabled');
+            messageSendBtn.removeAttribute('disabled');
+            fileInput.removeAttribute('disabled');
         } catch(err) {
             console.error(`Error: ${err}`);
         };
@@ -121,7 +126,6 @@ async function post(msg, type) {
     xhr.send(msg);
 }
 
-const fileInput = document.getElementById('file-input');
 fileInput.addEventListener('change', async (event) => {
     const file = event.target.files[0];  
     const filename = file.name;

@@ -111,7 +111,7 @@ ul {
 	background-color: #a8aab1;
 	float: right;
 }
-.chat .chat-header button:hover {
+.chat .chat-header button:not(:disabled):hover {
 	background-color: #c8cad1;
 }
  .chat .chat-header .fa-star {
@@ -202,7 +202,7 @@ ul {
 	font-weight: bold;
 	background: #f2f5f8;
 }
- .chat .chat-message button:hover, .chat .chat-message label:hover {
+ .chat .chat-message button:not(:disabled):hover, .chat .chat-message label:not(:disabled):hover {
 	 color: #75b1e8;
 }
  .online, .offline, .me {
