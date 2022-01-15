@@ -74,11 +74,10 @@ int _handleSend(int connfd, char *buf) {
     closeFD(connfd);
     return ret;
   } else {
-    // fprintf(stderr, "========handleSend: connfd:%d
-    // buf_last_char:%d=========\n",
-    //         connfd, buf[strlen(buf) - 1]);
-    // fprintf(stderr, "%s", buf);
-    // fprintf(stderr, "=============================\n");
+    fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
+            connfd, buf[strlen(buf) - 1]);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
   }
   return ret;
 }
@@ -108,11 +107,11 @@ int _handleWrite(int file_fd, char *buf) {
     closeFD(file_fd);
     return ret;
   } else {
-    // fprintf(stderr,
-    //         "========handleWrite: file_fd:%d buf_last_char:%d=========\n",
-    //         file_fd, buf[strlen(buf) - 1]);
-    // fprintf(stderr, "%s", buf);
-    // fprintf(stderr, "=============================\n");
+    fprintf(stderr,
+            "========handleWrite: file_fd:%d buf_last_char:%d=========\n",
+            file_fd, buf[strlen(buf) - 1]);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
   }
   return ret;
 }
