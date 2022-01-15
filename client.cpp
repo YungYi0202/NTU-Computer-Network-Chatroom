@@ -220,7 +220,7 @@ public:  // TODO: modify access
                         std::string friendname = friendnamefilename.substr(0, pos);
                         std::string filename = friendnamefilename.substr(pos+1);
 
-                        requestToSvr = "put " + friendname + " " + filename;
+                        requestToSvr = "put " +  username + " " + friendname + " " + filename;
                         // contentLen -= pos + strlen(CRLF);
                         state = STATE_SEND_PUT_REQ_TO_SVR;
                     } else {
@@ -298,6 +298,7 @@ public:  // TODO: modify access
                 else if (state == STATE_SEND_PUT_REQ_TO_SVR) {                 
                     handleWrite(svrfd, requestToSvr);
                     state = STATE_WAIT_PUT_ACK_FROM_SVR;
+                    fprintf(stderr, "STATE_WAIT_PUT_ACK_FROM_SVR\n");
                 }
                 else if (state == STATE_SEND_PUT_LEN_TO_SVR) {
                     char lenStr[10];
