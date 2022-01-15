@@ -63,6 +63,7 @@ int handleRead(std::string path, std::string *file_content) {
       std::cerr << *file_content << std::endl;
     }
   }
+  file_content->pop_back();
   return file_content->length();
 }
 
