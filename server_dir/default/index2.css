@@ -31,10 +31,29 @@ ul {
 	 padding: 14px;
 	 color: white;
 	 background: #6a6c75;
-	 width: 190px;
+	 width: 180px;
 	 font-size: 14px;
 	 display: inline-block;
 }
+ .people-list button {
+	font: 14px/22px "Lato", Arial, sans-serif;
+	border-radius: 2px;
+	border: 0px;
+	cursor: pointer;
+	background-color: #a8aab1;
+ }
+
+ .people-list button:hover {
+    background-color: #c8cad1;
+ }
+
+ .people-list .search button {
+	padding: 5px;
+    border-radius: 45px;
+    width: 31px;
+    margin: 3px;
+ }
+
  .people-list .fa-plus {
 	 position: relative;
 	 left: -25px;
@@ -83,6 +102,17 @@ ul {
 }
  .chat .chat-header .chat-num-messages {
 	 color: #92959e;
+}
+.chat .chat-header button {
+	font: 14px/22px "Lato", Arial, sans-serif;
+	border-radius: 2px;
+	border: 0px;
+	cursor: pointer;
+	background-color: #a8aab1;
+	float: right;
+}
+.chat .chat-header button:hover {
+	background-color: #c8cad1;
 }
  .chat .chat-header .fa-star {
 	 float: right;
@@ -154,8 +184,8 @@ ul {
 	 cursor: pointer;
 }
  .chat .chat-message button {
-	 float: right;
-	 color: #94c2ed;
+	float: right; 
+	color: #94c2ed;
 	 font-size: 16px;
 	 text-transform: uppercase;
 	 border: none;
@@ -163,7 +193,16 @@ ul {
 	 font-weight: bold;
 	 background: #f2f5f8;
 }
- .chat .chat-message button:hover {
+.chat .chat-message label {
+	color: #94c2ed;
+	font-size: 16px;
+	text-transform: uppercase;
+	border: none;
+	cursor: pointer;
+	font-weight: bold;
+	background: #f2f5f8;
+}
+ .chat .chat-message button:hover, .chat .chat-message label:hover {
 	 color: #75b1e8;
 }
  .online, .offline, .me {
