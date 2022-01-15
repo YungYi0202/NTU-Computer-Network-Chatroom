@@ -197,7 +197,7 @@ public:  // TODO: modify access
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
               // Directly return the header
-              handleWrite(fd, httpGetHeader(responseTypeToBrowser));
+              // handleWrite(fd, httpGetHeader(responseTypeToBrowser));
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
                 std::string tmp = ss.str();
@@ -293,7 +293,16 @@ public:  // TODO: modify access
                 } 
                 else if (state == STATE_SEND_GET_LEN_ACK_TO_SVR) {
                     handleWrite(svrfd, ACK);
-                    state = STATE_WAIT_GET_RES_FROM_SVR;
+                    
+                    if (responseLenFromSvr <= 0) {
+                      handleWrite(browserfd, httpGetHeader(responseTypeToBrowser, "404 Not Found"));
+                      // handleWrite(browserfd, CRLF);
+                      closeFD(browserfd);
+                      state = STATE_WAIT_REQ_FROM_BROWSER;
+                    } else {
+                      handleWrite(browserfd, httpGetHeader(responseTypeToBrowser));
+                      state = STATE_WAIT_GET_RES_FROM_SVR;
+                    }    
                 }  
                 else if (state == STATE_SEND_PUT_REQ_TO_SVR) {                 
                     handleWrite(svrfd, requestToSvr);
