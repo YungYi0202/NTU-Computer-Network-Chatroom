@@ -317,6 +317,7 @@ class Client {
       std::string from, to, something;
       sline >> from >> to;
       getline(sline, something);
+      something = something.substr(1);
       data.push_back({from, to, something});
     }
     std::string json = "[\n";
@@ -326,7 +327,12 @@ class Client {
       json += "{\n";
       json += "\"From\": \"" + hd.From + "\",\n";
       json += "\"To\": \"" + hd.To + "\",\n";
-      json += "\"Content\": \"" + hd.Content + "\"\n";
+      json += "\"Content\": ";
+      if(hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*") json += "\"";
+      if(hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*") json += hd.Content;
+      else json += hd.Content.substr(4);
+      if(hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*") json += "\"";
+      json += "\n";
       json += "}";
     }
     json += "\n]";
@@ -438,6 +444,8 @@ void *handling_client(void *arg) {
         }
         close(file_fd_user);
         close(file_fd_friend);
+
+        client.say(username, friend_name, "\%*\%*{\"File\": \"" + filename + "\"}");
         break;
       }
       case 'g':
