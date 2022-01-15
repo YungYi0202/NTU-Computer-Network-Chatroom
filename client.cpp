@@ -74,8 +74,8 @@ std::string contentType(std::string target) {
     return "text/plain";
 }
 
-std::string httpGetHeader(std::string contentType, std::string statusCode = "200 OK") {
-  return "HTTP/1.1 " + statusCode + "\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
+std::string httpGetHeader(std::string contentType, int contentLength, std::string statusCode = "200 OK") {
+  return "HTTP/1.1 " + statusCode + "\r\nContent-Length: " + std::to_string(contentLength) + "\r\nContent-Type: " + contentType + "; charset=UTF-8\r\n\r\n";
 }
 
 
@@ -199,12 +199,28 @@ public:  // TODO: modify access
             } else if (command == "POST") {
                 std::string tmp = ss.str();
                 int pos;
+                int contentLen = 0;
                 /* Read Header*/
                 while((pos = tmp.find('\n')) != std::string::npos) {
                     std::string line = tmp.substr(0, pos);
                     tmp = tmp.substr(pos + 1);
                     if (line == "\r") break;
+                    if (line.substr(0, strlen(CONTENT_LEN)) == CONTENT_LEN) {
+                      contentLen = atoi(line.substr(strlen(CONTENT_LEN)).c_str());
+                    }
                 }
+                fprintf(stderr, "contentLen: %d\n", contentLen);
+                
+                /* Handle if the packet is seperated. */
+                while (tmp.size() < contentLen) {
+                  int restLen = contentLen - tmp.size();
+                  fprintf(stderr, "restLen: %d\n", restLen);
+                  int ret = handleRead(browserfd, std::min(restLen, BUF_LEN));
+                  std::string newContent(buf);
+                  fprintf(stderr, "handleReadRet: %d newContent.size():%lu\n", ret, newContent.size());
+                  tmp += newContent;
+                }
+
                 /* Read Content */
                 if (tmp.size() > 0 ) {
                     if ((pos = tmp.find(CRLF)) != std::string::npos) {
@@ -278,6 +294,7 @@ public:  // TODO: modify access
                 fprintf(stderr, "Should rcv ACK from server, but rcv %s\n", buf);
             }
             state = STATE_SEND_PUT_CONTENT_TO_SVR;
+            fprintf(stderr, "STATE_SEND_PUT_CONTENT_TO_SVR\n");
           }
           // TODO: Other read states.
         } else if (FD_ISSET(fd, &working_wfds)) {
@@ -291,12 +308,12 @@ public:  // TODO: modify access
                     handleWrite(svrfd, ACK);
                     // Directly return the header
                     if (responseLenFromSvr <= 0) {
-                      handleWrite(browserfd, httpGetHeader(responseTypeToBrowser, "404 Not Found"));
+                      handleWrite(browserfd, httpGetHeader(responseTypeToBrowser, 0,"404 Not Found"));
                       // handleWrite(browserfd, CRLF);
                       closeFD(browserfd);
                       state = STATE_WAIT_REQ_FROM_BROWSER;
                     } else {
-                      handleWrite(browserfd, httpGetHeader(responseTypeToBrowser));
+                      handleWrite(browserfd, httpGetHeader(responseTypeToBrowser, responseLenFromSvr));
                       state = STATE_WAIT_GET_RES_FROM_SVR;
                     }    
                 }  
@@ -314,6 +331,7 @@ public:  // TODO: modify access
                 else if (state == STATE_SEND_PUT_CONTENT_TO_SVR) {
                     handleWrite(svrfd, fileContentPutToSvr);
                     state = STATE_SEND_PUT_RES_TO_BROWSER;
+                    fprintf(stderr, "STATE_SEND_PUT_RES_TO_BROWSER\n");
                 } 
                 else if (state == STATE_SEND_OTHER_POST_REQ_TO_SVR) {
                     handleWrite(svrfd, requestToSvr);
@@ -392,9 +410,9 @@ public:  // TODO: modify access
     }
   }
 
-  int handleRead(int fd) {
+  int handleRead(int fd, int readLen=BUF_LEN) {
     bzero(buf, BUF_LEN);
-    int ret = read(fd, buf, sizeof(buf));
+    int ret = read(fd, buf, readLen);
     if (ret <= 0 && fd > 0) {
     //   fprintf(stderr, "handleRead: fd:%d closeFD\n", fd);
       closeFD(fd);

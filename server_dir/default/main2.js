@@ -199,6 +199,7 @@ function createChatMsg(name, content, outcoming) {
         div1.classList.add('align-right');
     }
     div1.innerHTML = `<span class="message-data-name">${name}</span>`;
+    
     const div2 = document.createElement('div');
     if (outcoming) {
         div2.setAttribute('class','message other-message float-right');
@@ -208,32 +209,15 @@ function createChatMsg(name, content, outcoming) {
     li.appendChild(div1);
     li.appendChild(div2);
     if (typeof(content) === 'object') {
-        console.log(content);
-        console.log(content.File);
-        const filename = content.File;
-        console.log(typeof(filename));
-        
-        var a = document.createElement('a');   
-        a.setAttribute('href', filename);
-        a.download = filename;
-        a.innerHTML = filename;
-        console.log(a);
-        console.log(typeof(a));
-        
-        li.appendChild(a);
-        
-        /*
+        const filename = content.File;        
         if (isImage(filename)) {
             div2.innerHTML = `<a href="${filename}" download><img src="${filename}" alt="${filename}"></a>`;
         } else {        
-            
-            console.log(`File: <a href="${filename}" download>${filename}</a>`);
-            div2.innerHTML = `File: <a href="${filename}" download>${filename}</a>`;
-            console.log(div2.innerHTML);
-            
-        } 
-        */
-    } {
+            //console.log(`File: <a href="${filename}" download>${filename}</a>`);
+            div2.innerHTML = `<a href="${filename}" download>${filename}</a>`;
+            //console.log(div2.innerHTML);
+        }  
+    } else {
         div2.innerHTML = content
     }
     
