@@ -251,17 +251,16 @@ class Client {
       idx++;
     }
 
-    char buf[BUFLEN];
-    sprintf(buf, "%d", filelen + 2 * (idx) + 2 * (idx - 1) + 2);
-    handleSend(connfd, buf);
-    handleRecv(connfd, buf);
-
     std::string sbuf = "[";
     for (int i = 0; i < idx; i++) {
       if (i) sbuf += ", ";
       sbuf += "\"" + std::string(friends[i]) + "\"";
     }
     sbuf += "]";
+    char buf[BUFLEN];
+    sprintf(buf, "%d", sbuf.length());
+    handleSend(connfd, buf);
+    handleRecv(connfd, buf);
     handleSend(connfd, buf, sbuf);
 
     if (rc != SQLITE_DONE) {
@@ -438,7 +437,8 @@ void *handling_client(void *arg) {
         int file_fd_user = open(c_path_user, O_CREAT | O_RDWR, FILE_MODE);
         int file_fd_friend = open(c_path_friend, O_CREAT | O_RDWR, FILE_MODE);
         bzero(buf, BUFLEN);
-        while (filelen > 0 && (n = recv(connfd, buf, std::min(BUFLEN, filelen), 0)) > 0) {
+        while (filelen > 0 &&
+               (n = recv(connfd, buf, std::min(BUFLEN, filelen), 0)) > 0) {
           write(file_fd_user, buf, n);
           write(file_fd_friend, buf, n);
           filelen -= n;
