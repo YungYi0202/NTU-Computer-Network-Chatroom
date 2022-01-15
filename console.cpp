@@ -58,8 +58,7 @@ int _handleSend(int connfd, char *buf) {
     closeFD(connfd);
     return ret;
   } else {
-    fprintf(stderr,
-            "========handleSend: connfd:%d buf_last_char:%d=========\n",
+    fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
             connfd, buf[strlen(buf) - 1]);
     fprintf(stderr, "%s", buf);
     fprintf(stderr, "=============================\n");
@@ -83,6 +82,21 @@ int handleSend(int connfd, char *buf, std::string str = "") {
     }
   }
   return ret;
+}
+
+int handleRead(std::string path, std::string *file_content) {
+  std::cerr << "read " << path << std::endl;
+  std::ifstream targetFile;
+  std::string line;
+  targetFile.open(path);
+  if (targetFile.is_open()) {
+    while (getline(targetFile, line)) {
+      *file_content = *file_content + line + '\n';
+      std::cerr << *file_content << std::endl;
+    }
+  }
+  file_content->pop_back();
+  return file_content->length();
 }
 
 class Client {
@@ -119,9 +133,7 @@ class Client {
     while (filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
       printf("%s", buf);
       filelen -= n;
-      fprintf(stderr, "filelen = %d, n = %d\n", filelen, n);
     }
-    fprintf(stderr, "filelen = %d\n", filelen);
   }
 
   void history(const char *username, const char *friend_name) {
@@ -130,19 +142,24 @@ class Client {
     sscanf(buf, "%d", &filelen);
     handleSend(server_fd, buf, "1");
     int n;
-    while(filelen && (n = handleRecv(server_fd, buf)) > 0) {
+    while (filelen && (n = handleRecv(server_fd, buf)) > 0) {
       printf("%s", buf);
       filelen -= n;
     }
   }
 
   void put(const char *username, const char *filename) {
-    // incomplete
+    sprintf(path, "client_dir/%s", filename);
+    std::string file_content;
+    handleRead(std::string(path), &file_content);
+    handleSend(server_fd, buf, std::to_string(file_content.length()));
+    handleRecv(server_fd, buf);
+    handleSend(server_fd, buf, file_content);
   }
 
   void get(const char *username, const char *filename) {
-    // TODO: will not overwrite the whole file, hence, if new file len > past file len, then the content
-    // over new file len will remain the same
+    // TODO: will not overwrite the whole file, hence, if new file len > past
+    // file len, then the content over new file len will remain the same
     handleRecv(server_fd, buf);
     int filelen;
     sscanf(buf, "%d", &filelen);
@@ -151,7 +168,7 @@ class Client {
     sprintf(path, "client_dir/%s", filename);
     int n;
     int file_fd = open(path, O_CREAT | O_RDWR, FILE_MODE);
-    while(filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
+    while (filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
       write(file_fd, buf, n);
       filelen -= n;
     }

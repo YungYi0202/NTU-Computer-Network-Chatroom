@@ -306,7 +306,8 @@ class Client {
 
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
       const unsigned char *content = sqlite3_column_text(stmt, 0);
-      history = std::string((const char*)content);  // history length no more than 1e6
+      history = std::string(
+          (const char *)content);  // history length no more than 1e6
     }
     processHistory();
   }
@@ -416,30 +417,28 @@ void *handling_client(void *arg) {
         commandss >> command >> username;
         client.addUser(username.c_str());
         break;
-      /*case 'p':
-        if (!fs::exists({server_dir / username})) {
-          std::ofstream{server_dir / username};
+      case 'p': {
+        commandss >> command >> username >> filename;
+        const fs::path dir = server_dir + "/" + username;
+        if (!fs::exists(dir)) {
+          std::cerr << "dir = " << dir << std::endl;
+          fs::create_directory(dir);
         }
-        char *pch;
-        pch = strtok(command, " ");
-        pch = strtok(NULL, " ");
-        strcpy(username, pch);
-        pch = strtok(NULL, " ");
-        strcpy(filename, pch);
         handleSend(connfd, buf, "1");
         handleRecv(connfd, buf);
         int filelen;
-        sscanf(buf, "%*s %d", &filelen);
+        sscanf(buf, "%d", &filelen);
         handleSend(connfd, buf, "1");
-        file_fd =
-            open(fs::path({server_dir / username / filename}).string().c_str(),
-                 O_CREAT | O_RDWR, FILE_MODE);
+        char c_path[128];
+        sprintf(c_path, "server_dir/%s/%s", username.c_str(), filename.c_str());
+        int file_fd = open(c_path, O_CREAT | O_RDWR, FILE_MODE);
         while (filelen > 0 && (n = handleRecv(connfd, buf)) > 0) {
           write(file_fd, buf, n);
           filelen -= n;
         }
         close(file_fd);
-        break;*/
+        break;
+      }
       case 'g':
         commandss >> command >> username >> filename;
         std::string path =
