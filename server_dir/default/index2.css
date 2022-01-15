@@ -12,6 +12,9 @@ ul {
     list-style: none; 
     padding-left: 0;
 }
+img {
+	width: 250px;
+}
 .login {
 	display: flex;
     justify-content: center; 

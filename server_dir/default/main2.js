@@ -1,3 +1,4 @@
+var myname='default';
 var curFriend='Authors';
 var myHeaders = new Headers();
 var getInit = { method: 'GET',
@@ -21,6 +22,7 @@ loginBtn.addEventListener('click', async _ => {
             const response = await fetch(myRequest);
             const resJson = await response.json();
             if (response.ok) {
+                myname=username;
                 mainWindow.style.display = 'block';
                 loginWindow.style.display = 'none';
                 loadUserFriends(resJson);
@@ -215,10 +217,8 @@ function createChatMsg(name, content, outcoming) {
         const filename = content.File;        
         if (isImage(filename)) {
             div2.innerHTML = `<a href="${filename}" download><img src="${filename}" alt="${filename}"></a>`;
-        } else {        
-            //console.log(`File: <a href="${filename}" download>${filename}</a>`);
+        } else {          
             div2.innerHTML = `<a href="${filename}" download>${filename}</a>`;
-            //console.log(div2.innerHTML);
         }  
     } else {
         div2.innerHTML = content

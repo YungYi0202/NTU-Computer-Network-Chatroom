@@ -69,6 +69,7 @@ std::string contentType(std::string target) {
       if (type == ".css") return "text/css";
       if (type == ".scss") return "text/x-scss";
       if (type == ".js") return "text/javascript";
+      if (type == ".png") return "image/png";
       // TODO:Add other type
     }  
     return "text/plain";
@@ -89,7 +90,7 @@ public:  // TODO: modify access
   std::string fileContentPutToSvr;
   int responseLenFromSvr = 0;
   std::string responseTypeToBrowser;
-  bool headerSent = false;
+  int getResFromSvrReadLen = 0; // For getting binary file.
 
   static const int maxfd = MAXFD;
   int svrfd;
@@ -127,7 +128,6 @@ public:  // TODO: modify access
     this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) err(1, "can't open socket");
 
-    // TODO: Check out what this is for.
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int));
 
     svr_addr.sin_family = AF_INET;
@@ -227,6 +227,7 @@ public:  // TODO: modify access
                     if ((pos = tmp.find(CRLF)) != std::string::npos) {
                         /* put request */
                         std::string friendnamefilename = tmp.substr(0, pos);
+                        contentLen -= pos + strlen(CRLF);
                         fileContentPutToSvr = tmp.substr(pos + strlen(CRLF));
                         
                         pos = friendnamefilename.find("=");
@@ -234,7 +235,7 @@ public:  // TODO: modify access
                         std::string filename = friendnamefilename.substr(pos+1);
 
                         requestToSvr = "put " +  username + " " + friendname + " " + filename;
-                        // contentLen -= pos + strlen(CRLF);
+                        // TODO: handle binary files.
                         state = STATE_SEND_PUT_REQ_TO_SVR;
                     } else {
                         /* other post request */
@@ -281,7 +282,8 @@ public:  // TODO: modify access
             fprintf(stderr, "responseLenFromSvr:%d\n", responseLenFromSvr);
           }
           else if (state == STATE_WAIT_GET_RES_FROM_SVR && fd == svrfd) {
-            handleRead(fd);
+            getResFromSvrReadLen = handleRead(fd);
+            fprintf(stderr, "get %d bytes from svr.\n", getResFromSvrReadLen);
             state = STATE_SEND_GET_RES_TO_BROWSER;
           } else if (state == STATE_WAIT_PUT_ACK_FROM_SVR && fd == svrfd) {
             handleRead(fd);
@@ -342,11 +344,11 @@ public:  // TODO: modify access
             else if (fd == browserfd) {
                 if (state == STATE_SEND_GET_RES_TO_BROWSER) {
                   // May have bug.
-                  int ret = handleWrite(fd);
+                  int ret = handleWrite(fd, "", getResFromSvrReadLen);
                   responseLenFromSvr -= ret;
-                  fprintf(stderr, "rest len: %d\n", responseLenFromSvr);
+                  // fprintf(stderr, "rest len: %d\n", responseLenFromSvr);
                   if (responseLenFromSvr <= 0) {
-                      handleWrite(fd, CRLF);
+                      // handleWrite(fd, CRLF);
                       closeFD(fd);
                       state = STATE_WAIT_REQ_FROM_BROWSER;
                   } else {
@@ -403,13 +405,11 @@ public:  // TODO: modify access
 
   void closeFD(int fd) {
     fprintf(stderr, "closeFD: %d\n", fd);
-    
     close(fd);
     if (fd != svrfd) {
       FD_CLR(fd, &master_rfds);  //?
       FD_CLR(fd, &master_wfds);  //?
       responseLenFromSvr = 0;
-      headerSent = false;
     }
   }
 
@@ -427,11 +427,11 @@ public:  // TODO: modify access
     return ret;
   }
 
-  int handleWrite(int fd, std::string str="") {
+  int handleWrite(int fd, std::string str="", int designated_write_len=0) {
     int ret, writeLen;
     std::string tmp;
-    if (str=="") {
-      ret = _handleWrite(fd);
+    if (str=="" && designated_write_len > 0) {
+      ret = _handleWrite(fd, designated_write_len);
     } else {
       while (str.size()) {
         writeLen = (str.size() < BUF_LEN)? str.size(): BUF_LEN;
@@ -444,11 +444,11 @@ public:  // TODO: modify access
     return ret;
   }
 
-  int _handleWrite(int fd) {
-    int writeLen = strlen(buf);
+  int _handleWrite(int fd, int designated_write_len=0) {
+    int writeLen = (designated_write_len>0)? designated_write_len: strlen(buf);
+    // fprintf(stderr, "_handle writeLen: %d bytes\n", writeLen);
     int ret = write(fd, buf, writeLen);
     if (ret != writeLen && fd > 0) {
-    //   fprintf(stderr, "handleWrite: fd:%d closeFD\n", fd);
       closeFD(fd);
       return ret;
     } else {
