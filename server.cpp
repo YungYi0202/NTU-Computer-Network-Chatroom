@@ -47,9 +47,9 @@ int handleRecv(int connfd, char *buf) {
     closeFD(connfd);
     pthread_exit((void *)1);
   } else {
-    // fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
-    // fprintf(stderr, "%s", buf);
-    // fprintf(stderr, "=============================\n");
+    fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
   }
   return ret;
 }
@@ -74,8 +74,7 @@ int _handleSend(int connfd, char *buf) {
     closeFD(connfd);
     return ret;
   } else {
-    fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
-            connfd, buf[strlen(buf) - 1]);
+    fprintf(stderr, "========handleSend: connfd:%d=========\n", connfd);
     fprintf(stderr, "%s", buf);
     fprintf(stderr, "=============================\n");
   }
@@ -327,10 +326,14 @@ class Client {
       json += "\"From\": \"" + hd.From + "\",\n";
       json += "\"To\": \"" + hd.To + "\",\n";
       json += "\"Content\": ";
-      if(hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*") json += "\"";
-      if(hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*") json += hd.Content;
-      else json += hd.Content.substr(4);
-      if(hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*") json += "\"";
+      if (hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*")
+        json += "\"";
+      if (hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*")
+        json += hd.Content;
+      else
+        json += hd.Content.substr(4);
+      if (hd.Content.length() < 4 || hd.Content.substr(0, 4) != "\%*\%*")
+        json += "\"";
       json += "\n";
       json += "}";
     }
@@ -435,7 +438,7 @@ void *handling_client(void *arg) {
         int file_fd_user = open(c_path_user, O_CREAT | O_RDWR, FILE_MODE);
         int file_fd_friend = open(c_path_friend, O_CREAT | O_RDWR, FILE_MODE);
         bzero(buf, BUFLEN);
-        while (filelen > 0 && (n = recv(connfd, buf, BUFLEN, 0)) > 0) {
+        while (filelen > 0 && (n = recv(connfd, buf, std::min(BUFLEN, filelen), 0)) > 0) {
           write(file_fd_user, buf, n);
           write(file_fd_friend, buf, n);
           filelen -= n;
@@ -444,7 +447,8 @@ void *handling_client(void *arg) {
         close(file_fd_user);
         close(file_fd_friend);
 
-        client.say(username, friend_name, "\%*\%*{\"File\": \"" + filename + "\"}");
+        client.say(username, friend_name,
+                   "\%*\%*{\"File\": \"" + filename + "\"}");
         break;
       }
       case 'g':
@@ -466,15 +470,15 @@ void *handling_client(void *arg) {
           }
         }
 
-        /*commandss >> command >> username >> filename;
-        std::string path =
-            std::string(server_dir) + "/" + username + "/" + filename;
-        std::string file_content;
-        handleRead(path, &file_content);
-        handleSend(connfd, buf, std::to_string(file_content.length()));
-        handleRecv(connfd, buf);
-        handleSend(connfd, buf, file_content);
-        break;*/
+        // commandss >> command >> username >> filename;
+        // std::string path =
+        //     std::string(server_dir) + "/" + username + "/" + filename;
+        // std::string file_content;
+        // handleRead(path, &file_content);
+        // handleSend(connfd, buf, std::to_string(file_content.length()));
+        // handleRecv(connfd, buf);
+        // handleSend(connfd, buf, file_content);
+        break;
     }
   }
 }
