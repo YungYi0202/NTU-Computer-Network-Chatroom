@@ -74,6 +74,7 @@ int handleSend(int connfd, char *buf, std::string str = "") {
     ret = _handleSend(connfd, buf);
   } else {
     while (str.size()) {
+      bzero(buf, BUF_LEN);
       writeLen = (str.size() < BUF_LEN) ? str.size() : BUF_LEN;
       tmp = str.substr(0, writeLen);
       str = str.substr(writeLen);
@@ -87,7 +88,7 @@ int handleSend(int connfd, char *buf, std::string str = "") {
 class Client {
  public:
   int server_fd;
-  char buf[BUF_LEN];
+  char buf[BUF_LEN], path[BUF_LEN];
 
   int initClient(char *ip, int port_num) {
     mkdir("client_dir", DIR_MODE);
@@ -133,6 +134,19 @@ class Client {
 
   void get(const char *username, const char *filename) {
     // incomplete
+    handleRecv(server_fd, buf);
+    int filelen;
+    sscanf(buf, "%d", &filelen);
+    fprintf(stderr, "filelen = %d\n", filelen);
+    handleSend(server_fd, buf, "1");
+    sprintf(path, "client_dir/%s", filename);
+    int n;
+    int file_fd = open(path, O_CREAT | O_RDWR, FILE_MODE);
+    while(filelen > 0 && (n = handleRecv(server_fd, buf)) > 0) {
+      write(file_fd, buf, n);
+      filelen -= n;
+    }
+    close(file_fd);
   }
 
 } client;

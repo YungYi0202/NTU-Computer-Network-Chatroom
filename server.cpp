@@ -46,11 +46,24 @@ int handleRecv(int connfd, char *buf) {
     closeFD(connfd);
     pthread_exit((void *)1);
   } else {
-    fprintf(stderr, "========handleRead: connfd:%d=========\n", connfd);
+    fprintf(stderr, "========handleRecv: connfd:%d=========\n", connfd);
     fprintf(stderr, "%s", buf);
     fprintf(stderr, "=============================\n");
   }
   return ret;
+}
+
+int handleRead(std::string path, std::string *file_content) {
+  std::ifstream targetFile;
+  std::string line;
+  targetFile.open(path);
+  if (targetFile.is_open()) {
+    while (getline(targetFile, line)) {
+      *file_content = *file_content + line + '\n';
+      std::cerr << *file_content << std::endl;
+    }
+  }
+  return file_content->length();
 }
 
 int _handleSend(int connfd, char *buf) {
@@ -60,8 +73,7 @@ int _handleSend(int connfd, char *buf) {
     closeFD(connfd);
     return ret;
   } else {
-    fprintf(stderr,
-            "========handleWrite: connfd:%d buf_last_char:%d=========\n",
+    fprintf(stderr, "========handleSend: connfd:%d buf_last_char:%d=========\n",
             connfd, buf[strlen(buf) - 1]);
     fprintf(stderr, "%s", buf);
     fprintf(stderr, "=============================\n");
@@ -70,17 +82,56 @@ int _handleSend(int connfd, char *buf) {
 }
 
 int handleSend(int connfd, char *buf, std::string str = "") {
+  std::cerr << "str = " << str << std::endl;
   int ret, writeLen;
   std::string tmp;
   if (str == "") {
     ret = _handleSend(connfd, buf);
   } else {
     while (str.size()) {
+      bzero(buf, BUFLEN);
+      writeLen = (str.size() < BUFLEN) ? str.size() : BUFLEN;
+      tmp = str.substr(0, writeLen);
+      str = str.substr(writeLen);
+      // fprintf(stderr, "original buf = %s\n", buf);
+      std::cerr << "tmp=" << tmp << std::endl;
+      sprintf(buf, "%s", tmp.c_str());
+      // fprintf(stderr, "buf = %s\n", buf);
+      ret = _handleSend(connfd, buf);
+    }
+  }
+  return ret;
+}
+
+int _handleWrite(int file_fd, char *buf) {
+  int writeLen = strlen(buf);
+  int ret = write(file_fd, buf, writeLen);
+  if (ret != writeLen) {
+    closeFD(file_fd);
+    return ret;
+  } else {
+    fprintf(stderr,
+            "========handleWrite: file_fd:%d buf_last_char:%d=========\n",
+            file_fd, buf[strlen(buf) - 1]);
+    fprintf(stderr, "%s", buf);
+    fprintf(stderr, "=============================\n");
+  }
+  return ret;
+}
+
+int handleWrite(int file_fd, char *buf, std::string str = "") {
+  int ret, writeLen;
+  std::string tmp;
+  if (str == "") {
+    ret = _handleWrite(file_fd, buf);
+  } else {
+    while (str.size()) {
+      bzero(buf, BUFLEN);
       writeLen = (str.size() < BUFLEN) ? str.size() : BUFLEN;
       tmp = str.substr(0, writeLen);
       str = str.substr(writeLen);
       sprintf(buf, "%s", tmp.c_str());
-      ret = _handleSend(connfd, buf);
+      ret = _handleWrite(file_fd, buf);
     }
   }
   return ret;
@@ -369,18 +420,13 @@ void *handling_client(void *arg) {
         strcpy(username, pch);
         pch = strtok(NULL, " ");
         strcpy(filename, pch);
-        char path[BUFLEN];
-        sprintf(path, "%s/%s/%s", server_dir, username, filename);
-        struct stat st;
-        fprintf(stderr, "get file %s\n", path);
-        stat(path, &st);
-        sprintf(buf, "%d\n", (int)st.st_size);
-        handleSend(connfd, buf);
+        std::string path = std::string(server_dir) + "/" +
+                           std::string(username) + "/" + std::string(filename);
+        std::string file_content;
+        handleRead(path, &file_content);
+        handleSend(connfd, buf, std::to_string(file_content.length()));
         handleRecv(connfd, buf);
-        file_fd = open(path, O_RDWR);
-        while ((n = read(file_fd, buf, BUFLEN)) > 0) {
-          handleSend(connfd, buf);
-        }
+        handleSend(connfd, buf, file_content);
         break;
     }
   }
