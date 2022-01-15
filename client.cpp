@@ -31,6 +31,7 @@
 #define CONTENT_LEN "Content-Length: "
 #define POST_RES_SUCCESS "HTTP/1.1 200 OK\r\n\r\n"
 #define POST_RES_ERROR "HTTP/1.1 404 Not Found\r\n\r\n"
+#define DEFAULTUSERNAME "default"
 
 
 #define DIR_MODE (FILE_MODE | S_IXUSR | S_IXGRP | S_IXOTH)
@@ -82,7 +83,7 @@ std::string httpGetHeader(std::string contentType, std::string statusCode = "200
 class Client {
 public:  // TODO: modify access
   int state = STATE_WAIT_REQ_FROM_BROWSER;
-  std::string username = "default";
+  std::string username = DEFAULTUSERNAME;
   // bool hasUsername = false;
   std::string requestToSvr;
   std::string fileContentPutToSvr;
@@ -195,6 +196,7 @@ public:  // TODO: modify access
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
+              // Directly return the header
               handleWrite(fd, httpGetHeader(responseTypeToBrowser));
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
@@ -363,7 +365,12 @@ public:  // TODO: modify access
       if (target == "/") target = "/index2.html";
       if (target.size() > 1 && target[0] == '/') target = target.substr(1);
       responseTypeToBrowser = contentType(target);
-      requestToSvr = "get " + username + " " + target;
+      /** Handle Special Case **/
+      if (target == "index2.html" || target == "index2.css" || target == "main2.js") {
+        requestToSvr = "get " + std::string(DEFAULTUSERNAME) + " " + target;
+      } else {
+        requestToSvr = "get " + username + " " + target;
+      }
     }
   }
 

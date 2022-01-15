@@ -36,6 +36,8 @@ loginBtn.addEventListener('click', async _ => {
 const historyContainer = document.getElementById('chat-history-container');
 const chatWith = document.getElementById('chat-with');
 const chatNum = document.getElementById('chat-num-messages');
+const friendsSet = new Set();
+const friendListContainer = document.getElementById('friend-list');
 
 function createFriendListItem(friendname) {
     const item = document.createElement('li');
@@ -51,7 +53,7 @@ function createFriendListItem(friendname) {
         try {   
             var msg = `delete=${friendname}`;
             await post(msg, 'text/plain');
-            console.log(msg);
+            friendListContainer.removeChild(item);
         } catch(err) {
             console.error(`Error: ${err}`);
         }
@@ -69,8 +71,7 @@ function createFriendListItem(friendname) {
     });
     return item;
 }
-const friendsSet = new Set();
-const friendListContainer = document.getElementById('friend-list');
+
 function loadUserFriends(friends) {
     for (var i = 0 ; i < friends.length; i++) {
         const item = createFriendListItem(friends[i]);
