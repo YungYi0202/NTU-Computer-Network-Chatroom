@@ -99,13 +99,13 @@ public:  // TODO: modify access
   fd_set master_rfds, working_rfds, master_wfds, working_wfds;
   char buf[BUF_LEN];
   
-  void init(char *ip, int port_num) {
+  void init(char *ip, int svr_port_num, int cli_port_num) {
     /* To talk with server.cpp */
     mkdir("client_dir", DIR_MODE);
 
     struct sockaddr_in addr_in;
     addr_in.sin_family = AF_INET;
-    addr_in.sin_port = htons(port_num);
+    addr_in.sin_port = htons(svr_port_num);
     addr_in.sin_addr.s_addr = inet_addr(ip);
 
     svrfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -132,7 +132,7 @@ public:  // TODO: modify access
 
     svr_addr.sin_family = AF_INET;
     svr_addr.sin_addr.s_addr = INADDR_ANY;
-    svr_addr.sin_port = htons(SVR_PORT);
+    svr_addr.sin_port = htons(cli_port_num);
 
     if (bind(sockfd, (struct sockaddr *)&svr_addr, sizeof(svr_addr)) == -1) {
       close(sockfd);
@@ -435,8 +435,8 @@ public:  // TODO: modify access
 } client;
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    fprintf(stderr, "usage: ./client [ip:port]\n");
+  if (argc != 3) {
+    fprintf(stderr, "usage: ./client [ip:port] port\n");
     exit(1);
   }
 
@@ -447,10 +447,10 @@ int main(int argc, char *argv[]) {
   pch = strtok(NULL, ":");
   strcpy(port, pch);
 
-  uint16_t port_num = 0;
+  uint16_t svr_port_num = 0;
   int port_l = strlen(port);
-  for (int i = 0; i < port_l; i++) port_num = port_num * 10 + port[i] - '0';
+  for (int i = 0; i < port_l; i++) svr_port_num = svr_port_num * 10 + port[i] - '0';
 
-  client.init(ip, port_num);
+  client.init(ip, svr_port_num, atoi(argv[2]));
   client.work();
 }

@@ -1,5 +1,5 @@
+var curFriend='Authors';
 var myHeaders = new Headers();
-
 var getInit = { method: 'GET',
                headers: myHeaders,
                mode: 'cors',
@@ -80,7 +80,6 @@ function loadUserFriends(friends) {
     }
 }
 
-var curFriend='Alice';
 const messageInput = document.getElementById('message-input');
 messageInput.addEventListener('keypress', async e => {
     try{
@@ -112,6 +111,7 @@ messageSendBtn.addEventListener('click', async _ => {
 async function sendMessage() {
     var msg = `say=${curFriend}=${messageInput.value}`;
     await post(msg, 'text/plain');
+    await refreshHistory(curFriend);
 }
 
 async function post(msg, type) {
@@ -127,9 +127,10 @@ fileInput.addEventListener('change', async (event) => {
     const filename = file.name;
     const type = file.type;
     var reader = new FileReader();
-    reader.onload = function(event) {
+    reader.onload = async function(event) {
         var msg = `${curFriend}=${filename}\r\n${event.target.result}`;
-        post(msg, type);
+        await post(msg, type);
+        await refreshHistory(curFriend);
     };
     reader.readAsText(file);
     fileInput.value='';
@@ -174,6 +175,15 @@ addFriendBtn.addEventListener('click', async _ => {
     }
 });
 
+function isImage(filename) {
+    var dot = filename.indexOf('.');
+    var type = filename.substring(dot + 1);
+    if (type === 'jpg' || type === 'jpeg' || type === 'png') {
+        return true;
+    }
+    return false;
+}
+
 function createChatMsg(name, content, outcoming) {
     const li = document.createElement('li');
     if (outcoming) {
@@ -192,7 +202,12 @@ function createChatMsg(name, content, outcoming) {
         div2.setAttribute('class','message my-message');
     }
     if (typeof(content) === 'object') {
-        div2.innerHTML = `<a href="${content.File}" download>${content.File}</a>`;
+        const filename = content.File;
+        if (isImage(filename)) {
+            div2.innerHTML = `<a href="${filename}" download><img src="${filename}" alt="${filename}"></a>`;
+        } else {
+            div2.innerHTML = `<a href="${filename}" download>${filename}</a>`;
+        } 
     } {
         div2.innerHTML = content
     }
@@ -213,7 +228,7 @@ async function refreshHistory(friendname) {
 function _refreshHistory(histories) {
     historyContainer.innerHTML = '';
     for (const history of histories) {
-        const chatMsg = createChatMsg(history.From, history.Content, (history.From == curFriend));
+        const chatMsg = createChatMsg(history.From, history.Content, (history.To == curFriend));
         historyContainer.appendChild(chatMsg);
     }
     chatWith.innerHTML = `Chat with ${curFriend}`;
