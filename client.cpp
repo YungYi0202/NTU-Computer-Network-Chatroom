@@ -346,6 +346,7 @@ public:  // TODO: modify access
                   // May have bug.
                   int ret = handleWrite(fd);
                   responseLenFromSvr -= ret;
+                  fprintf(stderr, "rest len: %d\n", responseLenFromSvr);
                   if (responseLenFromSvr <= 0) {
                       handleWrite(fd, CRLF);
                       closeFD(fd);
