@@ -195,7 +195,6 @@ public:  // TODO: modify access
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
               state = STATE_SEND_GET_REQ_TO_SVR;
-              handleWrite(fd, httpGetHeader(responseTypeToBrowser));
               fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
             } else if (command == "POST") {
                 std::string tmp = ss.str();
@@ -314,15 +313,20 @@ public:  // TODO: modify access
             } 
             else if (fd == browserfd) {
                 if (state == STATE_SEND_GET_RES_TO_BROWSER) {
-                  int ret = handleWrite(fd);
-                  responseLenFromSvr -= ret;
-                  if (responseLenFromSvr <= 0) {
-                      handleWrite(fd, CRLF);
-                      closeFD(fd);
-                      state = STATE_WAIT_REQ_FROM_BROWSER;
-                  } else {
-                      state = STATE_WAIT_GET_RES_FROM_SVR;
-                  }
+                    if (!headerSent) {
+                    handleWrite(fd, httpGetHeader(responseTypeToBrowser));
+                    headerSent = true;
+                    } else {
+                        int ret = handleWrite(fd);
+                        responseLenFromSvr -= ret;
+                        if (responseLenFromSvr <= 0) {
+                            handleWrite(fd, CRLF);
+                            closeFD(fd);
+                            state = STATE_WAIT_REQ_FROM_BROWSER;
+                        } else {
+                            state = STATE_WAIT_GET_RES_FROM_SVR;
+                        }
+                    }
                 }
                 else if (state == STATE_SEND_PUT_RES_TO_BROWSER) {
                     // TODO: return fail status.
