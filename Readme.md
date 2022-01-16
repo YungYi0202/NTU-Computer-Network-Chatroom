@@ -58,11 +58,11 @@ $ ./console [ip:port]	// For console mode
 |   client.cpp
 ```
 
-#### Client (Browser mode)
+#### Client (Console mode)
 
 ```
 |   Makefile
-|   client.cpp
+|   console.cpp
 |       
 +---client_dir 
     |   any_file_to_be_put
