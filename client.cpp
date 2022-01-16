@@ -91,6 +91,7 @@ public:  // TODO: modify access
   int responseLenFromSvr = 0;
   std::string responseTypeToBrowser;
   int getResFromSvrReadLen = 0; // For getting binary file.
+  int reqFromBrowserReadLen = 0;
 
   static const int maxfd = MAXFD;
   int svrfd;
@@ -117,7 +118,6 @@ public:  // TODO: modify access
         fprintf(stderr, "No corresponding server.cpp.\n");
       } else {
         fprintf(stderr, "Server fd:%d.\n", svrfd);
-
       }
       
     }
@@ -160,7 +160,6 @@ public:  // TODO: modify access
       if (select(maxfd, &working_rfds, &working_wfds, NULL, NULL) < 0) {
         ERR_EXIT("select failed");
       }
-      // fprintf(stderr, "select");
       
       if (FD_ISSET(sockfd, &working_rfds)) {
         if ((clifd = accept(sockfd, (struct sockaddr *)&client_addr, (socklen_t *)&clilen)) < 0) {
@@ -191,9 +190,7 @@ public:  // TODO: modify access
             ss >> command >> target;
             if (command == "GET") { 
               handleGetReqFromBrowser(target);
-              state = STATE_SEND_GET_REQ_TO_SVR;
-              
-              fprintf(stderr, "check svrfd writable: %d %d\n", FD_ISSET(svrfd, &working_wfds), FD_ISSET(svrfd, &master_wfds));
+              state = STATE_SEND_GET_REQ_TO_SVR;              
             } else if (command == "POST") {
                 // Note: Assume only one handleRead before it reaches here.
                 std::string tmp = ss.str();
@@ -210,15 +207,14 @@ public:  // TODO: modify access
                       contentLen = atoi(line.substr(strlen(CONTENT_LEN)).c_str());
                     }
                 }
-                fprintf(stderr, "contentLen: %d\n", contentLen);
-                fprintf(stderr, "buf[byteCnt]: %c\n", buf[byteCnt]);
+                
                 /* Handle if the packet is seperated. */
                 while (tmp.size() < contentLen) {
                   int restLen = contentLen - tmp.size();
-                  fprintf(stderr, "restLen: %d\n", restLen);
+                  // fprintf(stderr, "restLen: %d\n", restLen);
                   int ret = handleRead(browserfd, std::min(restLen, BUF_LEN));
                   std::string newContent(buf);
-                  fprintf(stderr, "handleReadRet: %d newContent.size():%lu\n", ret, newContent.size());
+                  // fprintf(stderr, "handleReadRet: %d newContent.size():%lu\n", ret, newContent.size());
                   tmp += newContent;
                 }
 
@@ -239,7 +235,6 @@ public:  // TODO: modify access
                         state = STATE_SEND_PUT_REQ_TO_SVR;
                     } else {
                         /* other post request */
-                        fprintf(stderr, "%s", tmp.c_str());
                         /*
                             say=friendname=content
                             add=friendname
@@ -279,11 +274,11 @@ public:  // TODO: modify access
             handleRead(fd);
             responseLenFromSvr = atoi(buf);
             state = STATE_SEND_GET_LEN_ACK_TO_SVR;
-            fprintf(stderr, "responseLenFromSvr:%d\n", responseLenFromSvr);
+            // fprintf(stderr, "responseLenFromSvr:%d\n", responseLenFromSvr);
           }
           else if (state == STATE_WAIT_GET_RES_FROM_SVR && fd == svrfd) {
             getResFromSvrReadLen = handleRead(fd);
-            fprintf(stderr, "get %d bytes from svr.\n", getResFromSvrReadLen);
+            // fprintf(stderr, "get %d bytes from svr.\n", getResFromSvrReadLen);
             state = STATE_SEND_GET_RES_TO_BROWSER;
           } else if (state == STATE_WAIT_PUT_ACK_FROM_SVR && fd == svrfd) {
             handleRead(fd);
@@ -297,7 +292,7 @@ public:  // TODO: modify access
                 fprintf(stderr, "Should rcv ACK from server, but rcv %s\n", buf);
             }
             state = STATE_SEND_PUT_CONTENT_TO_SVR;
-            fprintf(stderr, "STATE_SEND_PUT_CONTENT_TO_SVR\n");
+            // fprintf(stderr, "STATE_SEND_PUT_CONTENT_TO_SVR\n");
           }
           // TODO: Other read states.
         } else if (FD_ISSET(fd, &working_wfds)) {
@@ -323,7 +318,7 @@ public:  // TODO: modify access
                 else if (state == STATE_SEND_PUT_REQ_TO_SVR) {                 
                     handleWrite(svrfd, requestToSvr);
                     state = STATE_WAIT_PUT_ACK_FROM_SVR;
-                    fprintf(stderr, "STATE_WAIT_PUT_ACK_FROM_SVR\n");
+                    // fprintf(stderr, "STATE_WAIT_PUT_ACK_FROM_SVR\n");
                 }
                 else if (state == STATE_SEND_PUT_LEN_TO_SVR) {
                     char lenStr[10];
@@ -334,7 +329,7 @@ public:  // TODO: modify access
                 else if (state == STATE_SEND_PUT_CONTENT_TO_SVR) {
                     handleWrite(svrfd, fileContentPutToSvr);
                     state = STATE_SEND_PUT_RES_TO_BROWSER;
-                    fprintf(stderr, "STATE_SEND_PUT_RES_TO_BROWSER\n");
+                    // fprintf(stderr, "STATE_SEND_PUT_RES_TO_BROWSER\n");
                 } 
                 else if (state == STATE_SEND_OTHER_POST_REQ_TO_SVR) {
                     handleWrite(svrfd, requestToSvr);
@@ -395,7 +390,7 @@ public:  // TODO: modify access
       if (target.size() > 1 && target[0] == '/') target = target.substr(1);
       responseTypeToBrowser = contentType(target);
       /** Handle Special Case **/
-      if (target == "index2.html" || target == "index2.css" || target == "main2.js") {
+      if (target == "index2.html" || target == "index2.css" || target == "main2.js" || target == "report.pdf") {
         requestToSvr = "get " + std::string(DEFAULTUSERNAME) + " " + target;
       } else {
         requestToSvr = "get " + username + " " + target;
@@ -410,6 +405,7 @@ public:  // TODO: modify access
       FD_CLR(fd, &master_rfds);  //?
       FD_CLR(fd, &master_wfds);  //?
       responseLenFromSvr = 0;
+      getResFromSvrReadLen = 0;
     }
   }
 
@@ -417,12 +413,11 @@ public:  // TODO: modify access
     bzero(buf, BUF_LEN);
     int ret = read(fd, buf, readLen);
     if (ret <= 0 && fd > 0) {
-    //   fprintf(stderr, "handleRead: fd:%d closeFD\n", fd);
       closeFD(fd);
     } else {
-      fprintf(stderr, "========handleRead: fd:%d=========\n", fd);
-      fprintf(stderr, "%s", buf);
-      fprintf(stderr, "=============================\n");
+      // fprintf(stderr, "========handleRead: fd:%d=========\n", fd);
+      // fprintf(stderr, "%s", buf);
+      // fprintf(stderr, "=============================\n");
     }
     return ret;
   }
@@ -452,10 +447,10 @@ public:  // TODO: modify access
       closeFD(fd);
       return ret;
     } else {
-      fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",
-              fd, buf[strlen(buf) - 1]);
-      fprintf(stderr, "%s", buf);
-      fprintf(stderr, "=============================\n");
+      // fprintf(stderr, "========handleWrite: fd:%d buf_last_char:%d=========\n",
+      //         fd, buf[strlen(buf) - 1]);
+      // fprintf(stderr, "%s", buf);
+      // fprintf(stderr, "=============================\n");
     }
     return ret;
   }
