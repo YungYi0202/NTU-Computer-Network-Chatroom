@@ -212,7 +212,7 @@ public:  // TODO: modify access
                 while (tmp.size() < contentLen) {
                   int restLen = contentLen - tmp.size();
                   // fprintf(stderr, "restLen: %d\n", restLen);
-                  int ret = handleRead(browserfd, std::min(restLen, BUF_LEN));
+                  handleRead(browserfd, std::min(restLen, BUF_LEN));
                   std::string newContent(buf);
                   // fprintf(stderr, "handleReadRet: %d newContent.size():%lu\n", ret, newContent.size());
                   tmp += newContent;

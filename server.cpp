@@ -258,7 +258,7 @@ class Client {
     }
     sbuf += "]";
     char buf[BUFLEN];
-    sprintf(buf, "%d", sbuf.length());
+    sprintf(buf, "%lu", sbuf.length());
     handleSend(connfd, buf);
     handleRecv(connfd, buf);
     handleSend(connfd, buf, sbuf);
