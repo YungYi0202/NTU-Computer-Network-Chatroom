@@ -73,14 +73,16 @@ $ ./console [ip:port]	// For console mode
 1. Access `http://localhost:port2/` 
 2. Enter `$username` to login
 <img src="https://i.imgur.com/1Avymru.png" style="zoom:50%">
-3. Start chatting! You can
-	- Upload File
-	- Click image or file link to download file
-	- Add/Delete friend
-	- Refresh history
-		- Every time user sends a message the history would be refreshed.
-	- Send message
-	- Every input section allow uses press `enter` to send.
+3. Start chatting! 
+    
+You can
+- Upload File
+- Click image or file link to download file
+- Add/Delete friend
+- Refresh history
+    - Every time user sends a message the history would be refreshed.
+- Send message
+- Every input section allow uses press `enter` to send.
 <img src="https://i.imgur.com/fH15TqZ.png" style="zoom:50%">
 
 ### Console Mode
